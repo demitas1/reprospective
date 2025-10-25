@@ -143,9 +143,6 @@ reprospective/
 
 Apache License 2.0 - 詳細は [LICENSE.txt](./LICENSE.txt) を参照
 
-## 貢献
-
-プルリクエストを歓迎します。大きな変更の場合は、まずissueを開いて変更内容を議論してください。
 
 ## プロジェクトステータス
 
