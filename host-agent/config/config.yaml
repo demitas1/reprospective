@@ -1,0 +1,18 @@
+# Reprospective Host Agent 設定ファイル
+# このファイルはバージョン管理にコミットしないでください
+
+# データベース設定
+database:
+  type: sqlite
+  sqlite:
+    path: data/host_agent.db
+
+# デスクトップアクティビティ監視設定
+desktop_monitor:
+  enabled: true
+  monitor_interval: 10  # 監視間隔（秒）
+
+# ログ設定
+logging:
+  level: INFO
+  format: "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s"
