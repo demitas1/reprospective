@@ -3,6 +3,9 @@
 # 設定ファイル読み込み
 pyyaml>=6.0
 
+# ファイルシステム監視
+watchdog>=4.0.0
+
 # データベース（SQLiteは標準ライブラリに含まれる）
 # 将来的なPostgreSQL対応用
 # psycopg2-binary>=2.9.0

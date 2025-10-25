@@ -8,29 +8,32 @@ Host Agentは、ユーザーのデスクトップ上での活動を自動的に�
 
 現在実装されている機能：
 - **DesktopActivityMonitor (Linux X11)**: アクティブウィンドウの追跡とセッション記録
+- **FileSystemWatcher**: 指定ディレクトリ配下のファイル変更監視とイベント記録
 
 ## ディレクトリ構成
 
 ```
 host-agent/
-├── collectors/              # データ収集コンポーネント
-│   ├── linux_x11_monitor.py # Linux X11デスクトップモニター
+├── collectors/                # データ収集コンポーネント
+│   ├── linux_x11_monitor.py   # Linux X11デスクトップモニター
+│   ├── filesystem_watcher.py  # ファイルシステム監視
 │   └── __init__.py
-├── common/                  # 共通モジュール
-│   ├── models.py            # データモデル定義
-│   ├── database.py          # データベース操作
+├── common/                    # 共通モジュール
+│   ├── models.py              # データモデル定義
+│   ├── database.py            # データベース操作
 │   └── __init__.py
-├── config/                  # 設定ファイル
-│   ├── config.yaml          # 設定ファイル（.gitignore対象）
-│   └── config.example.yaml  # 設定ファイルサンプル
-├── data/                    # データディレクトリ（.gitignore対象）
-│   └── host_agent.db        # SQLiteデータベース（自動生成）
-├── scripts/                 # デバッグ・ユーティリティスクリプト
-│   ├── show_sessions.py     # セッション表示スクリプト
-│   └── reset_database.py    # データベース初期化スクリプト
-├── venv/                    # Python仮想環境（.gitignore対象）
-├── requirements.txt         # 依存パッケージ
-└── README.md               # このファイル
+├── config/                    # 設定ファイル
+│   ├── config.yaml            # 設定ファイル（.gitignore対象）
+│   └── config.example.yaml    # 設定ファイルサンプル
+├── data/                      # データディレクトリ（.gitignore対象）
+│   └── host_agent.db          # SQLiteデータベース（自動生成）
+├── scripts/                   # デバッグ・ユーティリティスクリプト
+│   ├── show_sessions.py       # デスクトップセッション表示スクリプト
+│   ├── show_file_events.py    # ファイルイベント表示スクリプト
+│   └── reset_database.py      # データベース初期化スクリプト
+├── venv/                      # Python仮想環境（.gitignore対象）
+├── requirements.txt           # 依存パッケージ
+└── README.md                  # このファイル
 ```
 
 ## セットアップ
@@ -76,6 +79,20 @@ pip install -r requirements.txt
 desktop_monitor:
   enabled: true
   monitor_interval: 10  # 監視間隔（秒）
+
+filesystem_watcher:
+  enabled: true
+  monitored_directories:
+    - /path/to/your/work/directory  # 監視対象ディレクトリを指定
+  symlinks:
+    follow: false  # シンボリックリンクを追跡しない（推奨）
+  exclude_patterns:
+    - ".*/\\.git/.*"
+    - ".*/node_modules/.*"
+    - ".*/__pycache__/.*"
+  buffer:
+    max_events: 100      # バッファ最大イベント数
+    flush_interval: 10   # フラッシュ間隔（秒）
 ```
 
 ## 使い方
@@ -96,9 +113,26 @@ python collectors/linux_x11_monitor.py
 2. ウィンドウが変わったら前のセッションを終了し、新しいセッションを開始
 3. セッション情報を `data/host_agent.db` に保存
 
+### ファイルシステムウォッチャーの起動
+
+```bash
+# 仮想環境を有効化
+source venv/bin/activate
+
+# ファイルシステムウォッチャーを起動
+python collectors/filesystem_watcher.py
+```
+
+起動すると、以下のような動作をします：
+
+1. 設定ファイルで指定されたディレクトリを再帰的に監視
+2. ファイルの作成・変更・削除・移動イベントを検出
+3. 除外パターンにマッチするファイルは無視
+4. イベントをバッファリングし、最大100件または10秒ごとにデータベースに保存
+
 ### 停止方法
 
-`Ctrl+C` で停止します。現在のセッションは自動的に終了処理されます。
+`Ctrl+C` で停止します。現在のセッションやバッファ内のイベントは自動的に保存されます。
 
 ## データベース
 
@@ -119,7 +153,27 @@ python collectors/linux_x11_monitor.py
 | created_at | INTEGER | レコード作成時刻 |
 | updated_at | INTEGER | レコード更新時刻 |
 
+**file_change_events テーブル**:
+
+| カラム名 | 型 | 説明 |
+|---------|---|------|
+| id | INTEGER | プライマリキー |
+| event_time | INTEGER | イベント発生時刻（UNIXエポック秒） |
+| event_time_iso | TEXT | イベント発生時刻（ISO 8601形式） |
+| event_type | TEXT | イベントタイプ（created/modified/deleted/moved） |
+| file_path | TEXT | ファイルの絶対パス |
+| file_path_relative | TEXT | 監視ルートからの相対パス |
+| file_name | TEXT | ファイル名 |
+| file_extension | TEXT | ファイル拡張子 |
+| file_size | INTEGER | ファイルサイズ（バイト） |
+| is_symlink | INTEGER | シンボリックリンクかどうか（0/1） |
+| monitored_root | TEXT | 監視ルートディレクトリ |
+| project_name | TEXT | プロジェクト名（自動推定） |
+| created_at | INTEGER | レコード作成時刻 |
+
 ### データベースの確認
+
+#### デスクトップセッションの確認
 
 デバッグ用スクリプトを使用して、最近のセッションを確認できます：
 
@@ -137,13 +191,28 @@ python scripts/show_sessions.py 20
 python scripts/show_sessions.py 100
 ```
 
-または、SQLiteコマンドラインで直接確認：
+#### ファイルイベントの確認
+
+ファイル変更イベントも同様に確認できます：
+
+```bash
+# 仮想環境を有効化
+source venv/bin/activate
+
+# 最近の50件を表示（デフォルト）
+python scripts/show_file_events.py
+
+# 最近の100件を表示
+python scripts/show_file_events.py 100
+```
+
+#### SQLiteコマンドラインで直接確認
 
 ```bash
 # SQLiteコマンドラインで確認
 sqlite3 data/host_agent.db
 
-# 最近のセッションを表示
+# 最近のデスクトップセッションを表示
 SELECT
     datetime(start_time, 'unixepoch', 'localtime') as start,
     datetime(end_time, 'unixepoch', 'localtime') as end,
@@ -152,6 +221,17 @@ SELECT
     substr(window_title, 1, 50) as title
 FROM desktop_activity_sessions
 ORDER BY start_time DESC
+LIMIT 10;
+
+# 最近のファイルイベントを表示
+SELECT
+    datetime(event_time, 'unixepoch', 'localtime') as time,
+    event_type,
+    file_name,
+    project_name,
+    file_size
+FROM file_change_events
+ORDER BY event_time DESC
 LIMIT 10;
 ```
 
@@ -216,9 +296,9 @@ X11セッションで再ログインするか、将来のWayland対応版をお�
 ### 将来的な拡張
 
 - Wayland対応
-- FileSystemWatcher（ファイル変更監視）
+- FileSystemWatcher Phase 2（Web UIでの設定管理）
 - BrowserActivityParser（ブラウザ活動解析）
-- PostgreSQL同期機能
+- PostgreSQL同期機能（ローカルキャッシュ+バッチ同期）
 
 ## ライセンス
 

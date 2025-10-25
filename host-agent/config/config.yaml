@@ -12,6 +12,39 @@ desktop_monitor:
   enabled: true
   monitor_interval: 10  # 監視間隔（秒）
 
+# ファイルシステム監視設定
+filesystem_watcher:
+  enabled: true
+
+  # 監視対象ディレクトリ（明示的に指定）
+  monitored_directories:
+    - /mnt/ext-ssd1/work/github.com/reprospective
+
+  # シンボリックリンクの扱い
+  symlinks:
+    follow: false  # シンボリックリンクを追跡しない（推奨）
+
+  # 除外パターン（正規表現）
+  exclude_patterns:
+    - ".*\\.tmp$"
+    - ".*\\.swp$"
+    - ".*~$"
+    - ".*/node_modules/.*"
+    - ".*/__pycache__/.*"
+    - ".*/\\.git/.*"
+    - ".*/\\.venv/.*"
+    - ".*/venv/.*"
+    - ".*/build/.*"
+    - ".*/dist/.*"
+    - ".*/target/.*"
+    - ".*\\.log$"
+    - ".*/data/.*"  # データベースファイルなど
+
+  # バッファ設定
+  buffer:
+    max_events: 100      # バッファ最大イベント数
+    flush_interval: 10   # フラッシュ間隔（秒）
+
 # ログ設定
 logging:
   level: INFO

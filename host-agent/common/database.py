@@ -40,7 +40,9 @@ class Database:
     def _connect(self):
         """データベースに接続"""
         try:
-            self.connection = sqlite3.connect(self.db_path)
+            # check_same_thread=False: マルチスレッド環境で使用可能にする
+            # 注意: 複数スレッドから同時アクセスする場合は適切なロックが必要
+            self.connection = sqlite3.connect(self.db_path, check_same_thread=False)
             self.connection.row_factory = sqlite3.Row  # 辞書形式で結果を取得
             self.logger.info(f"データベースに接続しました: {self.db_path}")
         except Exception as e:
@@ -77,6 +79,41 @@ class Database:
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_application_name
                 ON desktop_activity_sessions(application_name)
+            """)
+
+            # ファイル変更イベントテーブル
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS file_change_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_time INTEGER NOT NULL,
+                    event_time_iso TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    file_path TEXT NOT NULL,
+                    file_path_relative TEXT,
+                    file_name TEXT NOT NULL,
+                    file_extension TEXT,
+                    file_size INTEGER,
+                    is_symlink INTEGER DEFAULT 0,
+                    monitored_root TEXT NOT NULL,
+                    project_name TEXT,
+                    created_at INTEGER NOT NULL
+                )
+            """)
+
+            # ファイル変更イベント用インデックス
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_file_event_time
+                ON file_change_events(event_time)
+            """)
+
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_file_project_name
+                ON file_change_events(project_name)
+            """)
+
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_file_extension
+                ON file_change_events(file_extension)
             """)
 
             self.connection.commit()
@@ -269,6 +306,132 @@ class Database:
 
         except Exception as e:
             self.logger.error(f"セッション取得エラー: {e}")
+            return []
+
+    def save_file_event(self, event_data: dict) -> int:
+        """
+        ファイル変更イベントをデータベースに保存
+
+        Args:
+            event_data: イベントデータ（辞書形式）
+                必須キー: event_time, event_time_iso, event_type, file_path,
+                         file_name, monitored_root
+                オプション: file_path_relative, file_extension, file_size,
+                           is_symlink, project_name
+
+        Returns:
+            int: 保存されたイベントのID
+        """
+        try:
+            cursor = self.connection.cursor()
+            current_time = int(time.time())
+
+            cursor.execute("""
+                INSERT INTO file_change_events
+                (event_time, event_time_iso, event_type, file_path,
+                 file_path_relative, file_name, file_extension, file_size,
+                 is_symlink, monitored_root, project_name, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                event_data['event_time'],
+                event_data['event_time_iso'],
+                event_data['event_type'],
+                event_data['file_path'],
+                event_data.get('file_path_relative'),
+                event_data['file_name'],
+                event_data.get('file_extension'),
+                event_data.get('file_size'),
+                event_data.get('is_symlink', 0),
+                event_data['monitored_root'],
+                event_data.get('project_name'),
+                current_time
+            ))
+
+            self.connection.commit()
+            event_id = cursor.lastrowid
+
+            self.logger.debug(
+                f"ファイルイベントを保存しました: ID={event_id}, "
+                f"type={event_data['event_type']}, file={event_data['file_name']}"
+            )
+
+            return event_id
+
+        except Exception as e:
+            self.logger.error(f"ファイルイベント保存エラー: {e}")
+            raise
+
+    def save_file_events_batch(self, events: List[dict]):
+        """
+        複数のファイル変更イベントを一括保存
+
+        Args:
+            events: イベントデータのリスト
+        """
+        try:
+            cursor = self.connection.cursor()
+            current_time = int(time.time())
+
+            event_tuples = [
+                (
+                    event['event_time'],
+                    event['event_time_iso'],
+                    event['event_type'],
+                    event['file_path'],
+                    event.get('file_path_relative'),
+                    event['file_name'],
+                    event.get('file_extension'),
+                    event.get('file_size'),
+                    event.get('is_symlink', 0),
+                    event['monitored_root'],
+                    event.get('project_name'),
+                    current_time
+                )
+                for event in events
+            ]
+
+            cursor.executemany("""
+                INSERT INTO file_change_events
+                (event_time, event_time_iso, event_type, file_path,
+                 file_path_relative, file_name, file_extension, file_size,
+                 is_symlink, monitored_root, project_name, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, event_tuples)
+
+            self.connection.commit()
+
+            self.logger.debug(f"{len(events)}件のファイルイベントを一括保存しました")
+
+        except Exception as e:
+            self.logger.error(f"ファイルイベント一括保存エラー: {e}")
+            raise
+
+    def get_recent_file_events(self, limit: int = 100) -> List[dict]:
+        """
+        最近のファイルイベントを取得
+
+        Args:
+            limit: 取得する最大件数
+
+        Returns:
+            List[dict]: イベントのリスト
+        """
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute("""
+                SELECT * FROM file_change_events
+                ORDER BY event_time DESC
+                LIMIT ?
+            """, (limit,))
+
+            events = []
+            for row in cursor.fetchall():
+                events.append(dict(row))
+
+            return events
+
+        except Exception as e:
+            self.logger.error(f"ファイルイベント取得エラー: {e}")
             return []
 
     def close(self):
