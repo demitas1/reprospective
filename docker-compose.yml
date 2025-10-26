@@ -1,0 +1,47 @@
+services:
+  # PostgreSQL 16データベース
+  database:
+    image: postgres:16-alpine
+    container_name: reprospective-db
+    restart: unless-stopped
+
+    environment:
+      # 環境変数は.envファイルから読み込み
+      POSTGRES_DB: ${POSTGRES_DB:-reprospective}
+      POSTGRES_USER: ${POSTGRES_USER:-reprospective}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-reprospective_dev_password}
+      # PostgreSQLの設定
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+      TZ: Asia/Tokyo
+
+    ports:
+      # ホストからアクセス可能にする（ホスト:コンテナ）
+      - "${POSTGRES_PORT:-5432}:5432"
+
+    volumes:
+      # データ永続化
+      - postgres_data:/var/lib/postgresql/data
+      # 初期化スクリプト
+      - ./services/database/init:/docker-entrypoint-initdb.d
+      # カスタムPostgreSQL設定（オプション）
+      - ./services/database/conf/postgresql.conf:/etc/postgresql/postgresql.conf
+
+    # ヘルスチェック
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-reprospective}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    networks:
+      - reprospective-network
+
+# 永続化ボリューム
+volumes:
+  postgres_data:
+    driver: local
+
+# ネットワーク（将来的に他のサービスも接続）
+networks:
+  reprospective-network:
+    driver: bridge

@@ -51,24 +51,36 @@ Dockerコンテナとして動作するマイクロサービス（Phase 2以降�
 - ファイルタイプ分類 📋
 - コンテンツ解析ユーティリティ 📋
 
-## セットアップ（Phase 1）
+## セットアップ
 
 ### 前提条件
 
+**Phase 1 (host-agent)**
 - Python 3.10以上
 - Linux X11環境（デスクトップモニター用）
 - `xdotool`、`xprop`コマンド
 
+**Phase 2 (services)**
+- Docker & Docker Compose
+
 ### インストール手順
 
-1. リポジトリのクローン
+#### 1. リポジトリのクローン
 
 ```bash
 git clone https://github.com/yourusername/reprospective.git
 cd reprospective
 ```
 
-2. ホストエージェントのセットアップ
+#### 2. 環境変数の設定
+
+```bash
+cp env.example .env
+# .env を編集してデータベースパスワードなどを設定
+vim .env
+```
+
+#### 3. ホストエージェントのセットアップ
 
 ```bash
 cd host-agent
@@ -77,7 +89,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-3. システムコマンドのインストール（Linux）
+システムコマンドのインストール（Linux）：
 
 ```bash
 # Ubuntu/Debian
@@ -90,11 +102,35 @@ sudo dnf install xdotool xorg-x11-utils
 sudo pacman -S xdotool xorg-xprop
 ```
 
-4. 設定ファイルの編集
+設定ファイルの編集：
 
 ```bash
 # config/config.yaml を編集して監視対象ディレクトリを設定
 vim config/config.yaml
+```
+
+#### 4. PostgreSQLサービスの起動（Phase 2）
+
+```bash
+# プロジェクトルートに戻る
+cd ..
+
+# PostgreSQLコンテナを起動
+docker-compose up -d database
+
+# 起動確認
+docker-compose ps
+docker-compose logs database
+```
+
+接続確認：
+
+```bash
+# psqlで接続テスト
+docker-compose exec database psql -U reprospective_user -d reprospective
+
+# または、ホストから直接接続
+psql -h localhost -p 5432 -U reprospective_user -d reprospective
 ```
 
 ## 使い方

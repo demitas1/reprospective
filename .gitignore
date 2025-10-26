@@ -285,6 +285,10 @@ public
 docker-compose.override.yml
 *.override.yml
 
+# PostgreSQLログ
+services/database/logs/
+pg_log/
+
 # ================================
 # IDE・エディタ
 # ================================
@@ -376,6 +380,10 @@ logs/
 # データディレクトリ
 data/
 /var/lib/reprospective/
+
+# host-agentプロセス管理
+host-agent/.pids/
+host-agent/logs/
 
 # 日誌ファイル（個人データのため）
 journals/
