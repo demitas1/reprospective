@@ -26,7 +26,8 @@ host-agent/
 │   ├── config.yaml            # 設定ファイル（.gitignore対象）
 │   └── config.example.yaml    # 設定ファイルサンプル
 ├── data/                      # データディレクトリ（.gitignore対象）
-│   └── host_agent.db          # SQLiteデータベース（自動生成）
+│   ├── desktop_activity.db    # デスクトップアクティビティDB（自動生成）
+│   └── file_changes.db        # ファイル変更イベントDB（自動生成）
 ├── scripts/                   # デバッグ・ユーティリティスクリプト
 │   ├── show_sessions.py       # デスクトップセッション表示スクリプト
 │   ├── show_file_events.py    # ファイルイベント表示スクリプト
@@ -76,24 +77,23 @@ pip install -r requirements.txt
 
 ```yaml
 # config/config.yaml
+database:
+  desktop_activity:
+    path: data/desktop_activity.db
+  file_changes:
+    path: data/file_changes.db
+
 desktop_monitor:
   enabled: true
-  monitor_interval: 10  # 監視間隔（秒）
+  monitor_interval: 10
 
 filesystem_watcher:
   enabled: true
   monitored_directories:
-    - /path/to/your/work/directory  # 監視対象ディレクトリを指定
-  symlinks:
-    follow: false  # シンボリックリンクを追跡しない（推奨）
-  exclude_patterns:
-    - ".*/\\.git/.*"
-    - ".*/node_modules/.*"
-    - ".*/__pycache__/.*"
-  buffer:
-    max_events: 100      # バッファ最大イベント数
-    flush_interval: 10   # フラッシュ間隔（秒）
+    - /path/to/your/work/directory
 ```
+
+詳細は`config/config.example.yaml`を参照してください。
 
 ## 使い方
 
@@ -109,9 +109,7 @@ python collectors/linux_x11_monitor.py
 
 起動すると、以下のような動作をします：
 
-1. 10秒ごとにアクティブウィンドウをチェック
-2. ウィンドウが変わったら前のセッションを終了し、新しいセッションを開始
-3. セッション情報を `data/host_agent.db` に保存
+アクティブウィンドウの変化を監視し、セッション情報を `data/desktop_activity.db` に保存します。
 
 ### ファイルシステムウォッチャーの起動
 
@@ -123,12 +121,7 @@ source venv/bin/activate
 python collectors/filesystem_watcher.py
 ```
 
-起動すると、以下のような動作をします：
-
-1. 設定ファイルで指定されたディレクトリを再帰的に監視
-2. ファイルの作成・変更・削除・移動イベントを検出
-3. 除外パターンにマッチするファイルは無視
-4. イベントをバッファリングし、最大100件または10秒ごとにデータベースに保存
+指定ディレクトリのファイル変更を監視し、イベントを `data/file_changes.db` に保存します。
 
 ### 停止方法
 
@@ -136,40 +129,12 @@ python collectors/filesystem_watcher.py
 
 ## データベース
 
-### SQLiteデータベース構造
+各コレクターは独立したSQLiteデータベースを使用します（スレッド競合を回避）：
 
-**desktop_activity_sessions テーブル**:
+- `data/desktop_activity.db`: デスクトップアクティビティセッション
+- `data/file_changes.db`: ファイル変更イベント
 
-| カラム名 | 型 | 説明 |
-|---------|---|------|
-| id | INTEGER | プライマリキー |
-| start_time | INTEGER | 開始時刻（UNIXエポック秒） |
-| end_time | INTEGER | 終了時刻（UNIXエポック秒） |
-| start_time_iso | TEXT | 開始時刻（ISO 8601形式） |
-| end_time_iso | TEXT | 終了時刻（ISO 8601形式） |
-| application_name | TEXT | アプリケーション名 |
-| window_title | TEXT | ウィンドウタイトル |
-| duration_seconds | INTEGER | 継続時間（秒） |
-| created_at | INTEGER | レコード作成時刻 |
-| updated_at | INTEGER | レコード更新時刻 |
-
-**file_change_events テーブル**:
-
-| カラム名 | 型 | 説明 |
-|---------|---|------|
-| id | INTEGER | プライマリキー |
-| event_time | INTEGER | イベント発生時刻（UNIXエポック秒） |
-| event_time_iso | TEXT | イベント発生時刻（ISO 8601形式） |
-| event_type | TEXT | イベントタイプ（created/modified/deleted/moved） |
-| file_path | TEXT | ファイルの絶対パス |
-| file_path_relative | TEXT | 監視ルートからの相対パス |
-| file_name | TEXT | ファイル名 |
-| file_extension | TEXT | ファイル拡張子 |
-| file_size | INTEGER | ファイルサイズ（バイト） |
-| is_symlink | INTEGER | シンボリックリンクかどうか（0/1） |
-| monitored_root | TEXT | 監視ルートディレクトリ |
-| project_name | TEXT | プロジェクト名（自動推定） |
-| created_at | INTEGER | レコード作成時刻 |
+テーブル定義の詳細は`common/database.py`を参照してください。
 
 ### データベースの確認
 
@@ -209,96 +174,37 @@ python scripts/show_file_events.py 100
 #### SQLiteコマンドラインで直接確認
 
 ```bash
-# SQLiteコマンドラインで確認
-sqlite3 data/host_agent.db
+# デスクトップアクティビティDB
+sqlite3 data/desktop_activity.db "SELECT * FROM desktop_activity_sessions ORDER BY start_time DESC LIMIT 10;"
 
-# 最近のデスクトップセッションを表示
-SELECT
-    datetime(start_time, 'unixepoch', 'localtime') as start,
-    datetime(end_time, 'unixepoch', 'localtime') as end,
-    duration_seconds,
-    application_name,
-    substr(window_title, 1, 50) as title
-FROM desktop_activity_sessions
-ORDER BY start_time DESC
-LIMIT 10;
-
-# 最近のファイルイベントを表示
-SELECT
-    datetime(event_time, 'unixepoch', 'localtime') as time,
-    event_type,
-    file_name,
-    project_name,
-    file_size
-FROM file_change_events
-ORDER BY event_time DESC
-LIMIT 10;
+# ファイル変更イベントDB
+sqlite3 data/file_changes.db "SELECT * FROM file_change_events ORDER BY event_time DESC LIMIT 10;"
 ```
 
 ### データベースの初期化
 
-クリーンな状態からテストする場合、データベースを初期化できます：
-
 ```bash
-# 仮想環境を有効化
-source venv/bin/activate
-
-# データベースを初期化（確認プロンプトあり）
-python scripts/reset_database.py
-
-# 確認なしで強制的に初期化
-python scripts/reset_database.py --force
+python scripts/reset_database.py              # 全DBを削除
+python scripts/reset_database.py --desktop    # デスクトップDBのみ削除
+python scripts/reset_database.py --files      # ファイルDBのみ削除
 ```
 
-注意: この操作はすべてのセッションデータを削除します。
+## アーキテクチャ
 
-## ログレベル
+### データベース分離
 
-`config/config.yaml` でログレベルを変更できます：
+各コレクターは独立したSQLiteデータベースを使用し、スレッド競合を回避：
+- `DesktopActivityDatabase`: デスクトップセッション管理
+- `FileChangeDatabase`: ファイルイベント管理
 
-```yaml
-logging:
-  level: INFO  # DEBUG, INFO, WARNING, ERROR
-```
-
-- **DEBUG**: 詳細なデバッグ情報（セッション継続中のログも出力）
-- **INFO**: 通常の情報（セッション開始・終了のみ）
-- **WARNING**: 警告のみ
-- **ERROR**: エラーのみ
-
-## トラブルシューティング
-
-### "xdotool: command not found"
-
-`xdotool` がインストールされていません。セットアップの手順に従ってインストールしてください。
-
-### "設定ファイルが見つかりません"
-
-`config/config.yaml` が存在しない場合、`config/config.example.yaml` をコピーしてください：
-
-```bash
-cp config/config.example.yaml config/config.yaml
-```
-
-### Waylandで動作しない
-
-現在、X11環境のみサポートしています。Waylandでは動作しません。
-X11セッションで再ログインするか、将来のWayland対応版をお待ちください。
-
-## 開発
-
-### モジュール構成
-
-- **models.py**: `ActivitySession` データクラス定義
-- **database.py**: SQLite操作（CRUD）
-- **linux_x11_monitor.py**: X11ウィンドウ情報取得とセッション管理
+詳細は`docs/design/technical_decision-database_separation.md`を参照。
 
 ### 将来的な拡張
 
+- PostgreSQL同期（ローカルキャッシュ+バッチ同期）
+- Web UIでの設定管理
 - Wayland対応
-- FileSystemWatcher Phase 2（Web UIでの設定管理）
-- BrowserActivityParser（ブラウザ活動解析）
-- PostgreSQL同期機能（ローカルキャッシュ+バッチ同期）
+- BrowserActivityParser
 
 ## ライセンス
 

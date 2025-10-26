@@ -26,22 +26,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 デスクトップアクティビティ監視エージェント（Linux X11環境）
 
 - **DesktopActivityMonitor**: アクティブウィンドウ追跡とセッション記録
-- **SQLiteデータベース**: 活動セッションの保存
+- **FileSystemWatcher**: ファイル変更監視とイベント記録
+- **データベース分離アーキテクチャ**: コレクター別独立DB（スレッド競合回避）
 - **設定管理**: YAML形式の設定ファイル
-- **デバッグツール**: セッション表示、データベース初期化スクリプト
+- **デバッグツール**: セッション/イベント表示、DB初期化スクリプト
 
-詳細: `host-agent/README.md`
+詳細: `host-agent/README.md`, `docs/design/`
+
+### 🚧 次回実装予定
+
+#### services/database (PostgreSQLサービス)
+- Docker Composeでのpostgresql起動
+- データベーススキーマ定義
+- host-agentからの同期機能実装
+  - ローカルSQLite → PostgreSQLバッチ同期
+  - 同期済みレコードの管理（synced_atカラム）
+
+目的: ローカルキャッシュ+中央DBアーキテクチャの実現
 
 ### 📋 未実装（計画中）
 
 #### host-agent/ (追加コレクター)
-- **FileSystemWatcher**: ファイル変更監視
 - **BrowserActivityParser**: ブラウザ活動解析
 - **GitHubMonitor**: コミット・PR追跡（API経由）
 - **SNSMonitor**: Bluesky等のSNS投稿収集
 
-#### services/ (Dockerコンテナサービス)
-- **database**: PostgreSQLサービス
+#### services/ (その他コンテナサービス)
 - **ai-analyzer**: AI分析エンジン
 - **api-gateway**: APIゲートウェイ
 - **web-ui**: Webフロントエンド
@@ -62,17 +72,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```
 host-agent/
 ├── collectors/
-│   └── linux_x11_monitor.py    ✅ Linux X11デスクトップモニター
+│   ├── linux_x11_monitor.py     ✅ Linux X11デスクトップモニター
+│   └── filesystem_watcher.py    ✅ ファイルシステム監視
 ├── common/
 │   ├── models.py                ✅ データモデル
-│   └── database.py              ✅ SQLite操作
+│   └── database.py              ✅ 分離されたDB操作クラス
 ├── config/
 │   └── config.yaml              ✅ 設定ファイル
 ├── scripts/
 │   ├── show_sessions.py         ✅ セッション表示
+│   ├── show_file_events.py      ✅ ファイルイベント表示
 │   └── reset_database.py        ✅ DB初期化
 └── data/
-    └── host_agent.db            ✅ SQLiteデータベース
+    ├── desktop_activity.db      ✅ デスクトップアクティビティDB
+    └── file_changes.db          ✅ ファイル変更イベントDB
 ```
 
 ### Planned Architecture (Phase 2+)
@@ -97,16 +110,16 @@ reprospective/
 
 ### Database Strategy
 
-- **Phase 1**: SQLite単独（`host-agent/data/host_agent.db`）
-  - ボリュームマウントでservicesと共有予定
-  - 書き込み頻度が低いため十分
+- **Phase 1**: コレクター別独立SQLite
+  - `data/desktop_activity.db`: デスクトップアクティビティ
+  - `data/file_changes.db`: ファイル変更イベント
+  - スレッド競合を回避、各コレクターが独立動作
 
 - **Phase 2**: PostgreSQL + SQLiteローカルキャッシュ
-  - host-agent: ローカルSQLiteに常時書き込み
-  - 定期的にPostgreSQLへバッチ同期
+  - 各ローカルDBからPostgreSQLへバッチ同期
   - オフライン耐性、高可用性を実現
 
-詳細: `docs/design/technical_decision-database_architecture.md`
+詳細: `docs/design/technical_decision-database_separation.md`
 
 ### Cross-Platform Support
 
@@ -133,53 +146,58 @@ source venv/bin/activate
 # 依存パッケージのインストール
 pip install -r requirements.txt
 
-# モニター起動
-python collectors/linux_x11_monitor.py
+# コレクター起動
+python collectors/linux_x11_monitor.py      # デスクトップ監視
+python collectors/filesystem_watcher.py      # ファイル監視
 
-# セッション確認
-python scripts/show_sessions.py
+# データ確認
+python scripts/show_sessions.py             # セッション表示
+python scripts/show_file_events.py          # ファイルイベント表示
 
 # データベース初期化
-python scripts/reset_database.py
+python scripts/reset_database.py            # 全DB削除
+python scripts/reset_database.py --desktop  # デスクトップDBのみ
+python scripts/reset_database.py --files    # ファイルDBのみ
 ```
 
 ### テスト方針
 
 - 現在は手動テスト
-- データベース内容の確認: `scripts/show_sessions.py`
+- データ確認: `scripts/show_sessions.py`, `scripts/show_file_events.py`
 - クリーンテスト: `scripts/reset_database.py`
+
+---
+
+## 実装履歴
+
+### 2025-10-25: データベース分離アーキテクチャ実装
+
+**課題:**
+- 複数コレクターが単一SQLiteを共有するとスレッド競合が発生
+- `check_same_thread=False`だけでは根本解決にならない
+
+**解決策:**
+- コレクター別に独立したSQLiteデータベースを使用
+- `DesktopActivityDatabase`, `FileChangeDatabase`クラスに分離
+- 各DBが独立して動作、競合なし
+
+**実装内容:**
+- `common/database.py`: 2つの専用DBクラスに分離
+- 設定ファイル: DB パスを個別指定
+- デバッグスクリプト: 各DB対応に更新
+- 設計書: `docs/design/technical_decision-database_separation.md`
+
+**次のステップ:**
+PostgreSQL同期機能の実装により、Phase 2のアーキテクチャへ移行
 
 ---
 
 ## Key Design Principles
 
 1. **段階的実装**: まず動くものを作り、徐々に拡張
-2. **Minimize manual input**: 自動収集を優先、手動入力は最小限
-3. **Privacy and security**: API認証情報の暗号化、ファイルアクセス権限の尊重
-4. **Lightweight**: バックグラウンド動作時にユーザー作業に影響を与えない
-5. **SOLID principles**: 簡潔で拡張しやすいコード設計
-
----
-
-## Important Implementation Notes
-
-### コーディング規約
-
-- **日本語使用箇所**: コメント、ドキュメント、ユーザー向けメッセージ
-- **英語使用箇所**: ディレクトリ名、ファイル名、変数名、関数名
-- **設定ファイル**: YAML形式、コメントは日本語可
-
-### セキュリティ
-
-- API認証情報は環境変数または暗号化して保存
-- `.gitignore`でデータベースファイルや設定ファイルを除外
-- プライバシーに配慮したログ出力
-
-### データベース
-
-- タイムスタンプはUNIXエポック秒とISO 8601形式の両方を保存
-- セッション管理: 同じウィンドウが続く場合は記録しない（重複排除）
-- エラー時も動作継続（ログ記録してスキップ）
+2. **単一責任**: 各DBは一つのコレクターのみを担当（SRP）
+3. **オフライン耐性**: ローカルキャッシュ+バッチ同期
+4. **SOLID principles**: 簡潔で拡張しやすいコード設計
 
 ---
 

@@ -15,7 +15,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from common.models import ActivitySession
-from common.database import Database
+from common.database import DesktopActivityDatabase
 
 
 class LinuxX11Monitor:
@@ -26,7 +26,7 @@ class LinuxX11Monitor:
     セッション単位でデータベースに記録する。
     """
 
-    def __init__(self, config: dict, database: Database):
+    def __init__(self, config: dict, database: DesktopActivityDatabase):
         """
         モニターを初期化
 
@@ -250,12 +250,12 @@ def main():
         config = yaml.safe_load(f)
 
     # データベースパスを解決（相対パスの場合は host-agent/ からの相対）
-    db_path = config['database']['sqlite']['path']
+    db_path = config['database']['desktop_activity']['path']
     if not Path(db_path).is_absolute():
         db_path = str(Path(__file__).parent.parent / db_path)
 
     # データベース初期化
-    database = Database(db_path)
+    database = DesktopActivityDatabase(db_path)
 
     # モニター起動
     monitor = LinuxX11Monitor(config, database)

@@ -50,7 +50,7 @@ def show_sessions(limit=10):
     """
     # データベースパスを解決
     script_dir = Path(__file__).parent
-    db_path = script_dir.parent / "data" / "host_agent.db"
+    db_path = script_dir.parent / "data" / "desktop_activity.db"
 
     if not db_path.exists():
         print(f"エラー: データベースファイルが見つかりません: {db_path}")

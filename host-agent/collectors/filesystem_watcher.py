@@ -20,7 +20,7 @@ from watchdog.events import FileSystemEventHandler, FileSystemEvent
 import sys
 sys.path.append(str(Path(__file__).parent.parent))
 
-from common.database import Database
+from common.database import FileChangeDatabase
 
 
 class FileChangeEventHandler(FileSystemEventHandler):
@@ -228,13 +228,13 @@ class FileSystemWatcher:
     データベースに記録する。
     """
 
-    def __init__(self, config: dict, database: Database):
+    def __init__(self, config: dict, database: FileChangeDatabase):
         """
         ファイルシステム監視を初期化
 
         Args:
             config: 設定辞書（filesystem_watcher セクション）
-            database: Databaseインスタンス
+            database: FileChangeDatabaseインスタンス
         """
         self.config = config
         self.database = database
@@ -385,13 +385,13 @@ def main():
 
     # データベース接続
     db_config = config.get('database', {})
-    db_path = db_config.get('sqlite', {}).get('path', 'data/host_agent.db')
+    db_path = db_config.get('file_changes', {}).get('path', 'data/file_changes.db')
 
     # 相対パスの場合はhost-agent/からの相対パスとする
     if not os.path.isabs(db_path):
         db_path = str(Path(__file__).parent.parent / db_path)
 
-    database = Database(db_path)
+    database = FileChangeDatabase(db_path)
 
     # FileSystemWatcherを作成
     watcher = FileSystemWatcher(fs_config, database)

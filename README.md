@@ -29,35 +29,35 @@ Reprospectiveは、ユーザーの日常的な作業活動を自動的に収集�
 
 ホストシステムのリソースに直接アクセスするコンポーネント：
 
-- **FileSystemWatcher**: ファイルシステムの変更監視
-- **DesktopActivityMonitor**: デスクトップアクティビティの追跡
-- **BrowserActivityParser**: ブラウザ活動の解析
+- **DesktopActivityMonitor** ✅: デスクトップアクティビティの追跡（Linux X11対応）
+- **FileSystemWatcher** ✅: ファイルシステムの変更監視
+- **BrowserActivityParser** 🚧: ブラウザ活動の解析（計画中）
 
 ### コンテナサービス (`services/`)
 
-Dockerコンテナとして動作するマイクロサービス：
+Dockerコンテナとして動作するマイクロサービス（Phase 2以降で実装予定）：
 
-- **collector-service**: GitHub/SNS等のAPI経由データ収集
-- **database**: PostgreSQL等のデータベース
-- **ai-analyzer**: AI分析エンジン（要約、分類、進捗推測）
-- **api-gateway**: APIゲートウェイ
-- **web-ui**: Webフロントエンド（レビュー、計画、可視化）
+- **database** 🚧: PostgreSQL（次回実装予定）
+- **collector-service** 📋: GitHub/SNS等のAPI経由データ収集（計画中）
+- **ai-analyzer** 📋: AI分析エンジン（要約、分類、進捗推測）（計画中）
+- **api-gateway** 📋: APIゲートウェイ（計画中）
+- **web-ui** 📋: Webフロントエンド（レビュー、計画、可視化）（計画中）
 
 ### 共有ライブラリ (`shared/`)
 
-ホストエージェントとサービス間で共有するコード：
+ホストエージェントとサービス間で共有するコード（Phase 2以降で実装予定）：
 
-- データモデル定義
-- ファイルタイプ分類
-- コンテンツ解析ユーティリティ
+- データモデル定義 📋
+- ファイルタイプ分類 📋
+- コンテンツ解析ユーティリティ 📋
 
-## セットアップ
+## セットアップ（Phase 1）
 
 ### 前提条件
 
-- Python 3.10以上（host-agent用）
-- Docker & Docker Compose（services用）
-- Node.js 18以上（web-ui用）
+- Python 3.10以上
+- Linux X11環境（デスクトップモニター用）
+- `xdotool`、`xprop`コマンド
 
 ### インストール手順
 
@@ -68,47 +68,64 @@ git clone https://github.com/yourusername/reprospective.git
 cd reprospective
 ```
 
-2. 環境変数の設定
-
-```bash
-cp env.example .env
-# .env を編集して必要な設定を記入
-```
-
-3. ホストエージェントのセットアップ
+2. ホストエージェントのセットアップ
 
 ```bash
 cd host-agent
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-4. Dockerサービスの起動
+3. システムコマンドのインストール（Linux）
 
 ```bash
-docker-compose up -d
+# Ubuntu/Debian
+sudo apt install xdotool x11-utils
+
+# Fedora
+sudo dnf install xdotool xorg-x11-utils
+
+# Arch Linux
+sudo pacman -S xdotool xorg-xprop
+```
+
+4. 設定ファイルの編集
+
+```bash
+# config/config.yaml を編集して監視対象ディレクトリを設定
+vim config/config.yaml
 ```
 
 ## 使い方
 
-### ホストエージェントの起動
+### デスクトップモニターの起動
 
 ```bash
 cd host-agent
 source venv/bin/activate
-python main.py
+python collectors/linux_x11_monitor.py
 ```
 
-### Webインターフェースへのアクセス
-
-ブラウザで `http://localhost:3000` を開く
-
-### サービスの停止
+### ファイルシステムウォッチャーの起動
 
 ```bash
-docker-compose down
+cd host-agent
+source venv/bin/activate
+python collectors/filesystem_watcher.py
 ```
+
+### データの確認
+
+```bash
+# デスクトップセッション表示
+python scripts/show_sessions.py
+
+# ファイルイベント表示
+python scripts/show_file_events.py
+```
+
+詳細は [`host-agent/README.md`](./host-agent/README.md) を参照してください。
 
 ## 開発
 
@@ -116,18 +133,29 @@ docker-compose down
 
 ```
 reprospective/
-├── docs/                   # ドキュメント
-├── host-agent/            # ホスト環境エージェント
-├── services/              # Dockerコンテナサービス群
-│   ├── collector-service/ # API経由データ収集
-│   ├── database/          # データベース
-│   ├── ai-analyzer/       # AI分析エンジン
-│   ├── api-gateway/       # APIゲートウェイ
-│   └── web-ui/            # Webフロントエンド
-├── shared/                # 共有ライブラリ
-├── docker-compose.yml     # サービスオーケストレーション
-├── env.example            # 環境変数サンプル
-└── Makefile              # 開発用コマンド
+├── CLAUDE.md                      # プロジェクト指示書
+├── README.md                      # このファイル
+├── docs/                          # ドキュメント
+│   ├── software_idea-ai_assited_todo.md  # 企画書
+│   └── design/                    # 設計ドキュメント
+├── host-agent/                    # ✅ ホスト環境エージェント（実装済み）
+│   ├── collectors/                # データ収集コンポーネント
+│   │   ├── linux_x11_monitor.py   # デスクトップモニター
+│   │   └── filesystem_watcher.py  # ファイルシステム監視
+│   ├── common/                    # 共通モジュール
+│   │   ├── models.py              # データモデル
+│   │   └── database.py            # データベース操作
+│   ├── config/                    # 設定ファイル
+│   ├── data/                      # ローカルデータベース
+│   ├── scripts/                   # デバッグツール
+│   └── README.md
+├── services/                      # 🚧 Dockerコンテナサービス（Phase 2以降）
+│   ├── database/                  # PostgreSQL
+│   ├── collector-service/         # API経由データ収集
+│   ├── ai-analyzer/               # AI分析エンジン
+│   ├── api-gateway/               # APIゲートウェイ
+│   └── web-ui/                    # Webフロントエンド
+└── shared/                        # 🚧 共有ライブラリ（Phase 2以降）
 ```
 
 ### 開発ガイドライン
@@ -146,7 +174,30 @@ Apache License 2.0 - 詳細は [LICENSE.txt](./LICENSE.txt) を参照
 
 ## プロジェクトステータス
 
-現在、実験的な実装フェーズです。各コンポーネントを順次実装中です。
+**Phase 1 - 基盤実装フェーズ** (2025-10-25時点)
+
+### ✅ 実装済み
+
+- **DesktopActivityMonitor** (Linux X11): デスクトップアクティビティ追跡
+- **FileSystemWatcher**: ファイル変更監視
+- **データベース分離アーキテクチャ**: コレクター別独立SQLite DB
+- **設定管理**: YAML設定ファイル
+- **デバッグツール**: セッション/イベント表示、DB初期化スクリプト
+
+詳細: [`host-agent/README.md`](./host-agent/README.md)
+
+### 🚧 次回実装予定 (Phase 2)
+
+- PostgreSQL同期機能（ローカルキャッシュ+中央DB）
+- Docker Compose環境構築
+- Web UIプロトタイプ
+
+### 📋 計画中
+
+- BrowserActivityParser（ブラウザ活動解析）
+- GitHubMonitor（コミット・PR追跡）
+- SNSMonitor（Bluesky投稿収集）
+- AI分析エンジン
 
 ## 関連ドキュメント
 

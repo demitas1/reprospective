@@ -1,7 +1,8 @@
 """
 データベース操作モジュール
 
-SQLiteデータベースへの接続、テーブル作成、CRUD操作を提供する。
+各データコレクター専用のSQLiteデータベースクラスを提供する。
+各クラスは独立したDBファイルを使用し、スレッド競合を回避する。
 """
 
 import sqlite3
@@ -12,11 +13,11 @@ from typing import Optional, List
 from .models import ActivitySession
 
 
-class Database:
+class DesktopActivityDatabase:
     """
-    SQLiteデータベース操作クラス
+    デスクトップアクティビティ専用データベースクラス
 
-    活動セッションの保存・取得・更新を行う。
+    desktop_activity_sessionsテーブルのみを管理する。
     """
 
     def __init__(self, db_path: str):
@@ -40,9 +41,7 @@ class Database:
     def _connect(self):
         """データベースに接続"""
         try:
-            # check_same_thread=False: マルチスレッド環境で使用可能にする
-            # 注意: 複数スレッドから同時アクセスする場合は適切なロックが必要
-            self.connection = sqlite3.connect(self.db_path, check_same_thread=False)
+            self.connection = sqlite3.connect(self.db_path)
             self.connection.row_factory = sqlite3.Row  # 辞書形式で結果を取得
             self.logger.info(f"データベースに接続しました: {self.db_path}")
         except Exception as e:
@@ -79,41 +78,6 @@ class Database:
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_application_name
                 ON desktop_activity_sessions(application_name)
-            """)
-
-            # ファイル変更イベントテーブル
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS file_change_events (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    event_time INTEGER NOT NULL,
-                    event_time_iso TEXT NOT NULL,
-                    event_type TEXT NOT NULL,
-                    file_path TEXT NOT NULL,
-                    file_path_relative TEXT,
-                    file_name TEXT NOT NULL,
-                    file_extension TEXT,
-                    file_size INTEGER,
-                    is_symlink INTEGER DEFAULT 0,
-                    monitored_root TEXT NOT NULL,
-                    project_name TEXT,
-                    created_at INTEGER NOT NULL
-                )
-            """)
-
-            # ファイル変更イベント用インデックス
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_file_event_time
-                ON file_change_events(event_time)
-            """)
-
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_file_project_name
-                ON file_change_events(project_name)
-            """)
-
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_file_extension
-                ON file_change_events(file_extension)
             """)
 
             self.connection.commit()
@@ -308,6 +272,96 @@ class Database:
             self.logger.error(f"セッション取得エラー: {e}")
             return []
 
+    def close(self):
+        """データベース接続をクローズ"""
+        if self.connection:
+            self.connection.close()
+            self.logger.info("データベース接続をクローズしました")
+
+
+class FileChangeDatabase:
+    """
+    ファイル変更イベント専用データベースクラス
+
+    file_change_eventsテーブルのみを管理する。
+    """
+
+    def __init__(self, db_path: str):
+        """
+        データベースを初期化
+
+        Args:
+            db_path: データベースファイルのパス
+        """
+        self.db_path = db_path
+        self.logger = logging.getLogger(__name__)
+        self.connection: Optional[sqlite3.Connection] = None
+
+        # データベースファイルのディレクトリを作成
+        db_dir = Path(db_path).parent
+        db_dir.mkdir(parents=True, exist_ok=True)
+
+        self._connect()
+        self._create_tables()
+
+    def _connect(self):
+        """データベースに接続"""
+        try:
+            # check_same_thread=False: watchdogのスレッドから呼び出されるため
+            self.connection = sqlite3.connect(self.db_path, check_same_thread=False)
+            self.connection.row_factory = sqlite3.Row  # 辞書形式で結果を取得
+            self.logger.info(f"データベースに接続しました: {self.db_path}")
+        except Exception as e:
+            self.logger.error(f"データベース接続エラー: {e}")
+            raise
+
+    def _create_tables(self):
+        """テーブルを作成"""
+        try:
+            cursor = self.connection.cursor()
+
+            # ファイル変更イベントテーブル
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS file_change_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_time INTEGER NOT NULL,
+                    event_time_iso TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    file_path TEXT NOT NULL,
+                    file_path_relative TEXT,
+                    file_name TEXT NOT NULL,
+                    file_extension TEXT,
+                    file_size INTEGER,
+                    is_symlink INTEGER DEFAULT 0,
+                    monitored_root TEXT NOT NULL,
+                    project_name TEXT,
+                    created_at INTEGER NOT NULL
+                )
+            """)
+
+            # ファイル変更イベント用インデックス
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_file_event_time
+                ON file_change_events(event_time)
+            """)
+
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_file_project_name
+                ON file_change_events(project_name)
+            """)
+
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_file_extension
+                ON file_change_events(file_extension)
+            """)
+
+            self.connection.commit()
+            self.logger.info("データベーステーブルを作成しました")
+
+        except Exception as e:
+            self.logger.error(f"テーブル作成エラー: {e}")
+            raise
+
     def save_file_event(self, event_data: dict) -> int:
         """
         ファイル変更イベントをデータベースに保存
@@ -439,3 +493,8 @@ class Database:
         if self.connection:
             self.connection.close()
             self.logger.info("データベース接続をクローズしました")
+
+
+# 後方互換性のためのエイリアス（非推奨）
+# 既存コードとの互換性を保つため、Databaseクラスを残す
+Database = DesktopActivityDatabase

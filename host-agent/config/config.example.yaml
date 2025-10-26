@@ -2,10 +2,12 @@
 # このファイルを config.yaml にコピーして使用してください
 
 # データベース設定
+# 各コレクター専用のデータベースファイルを使用（スレッド競合を回避）
 database:
-  type: sqlite  # sqlite または postgresql
-  sqlite:
-    path: data/host_agent.db  # SQLiteデータベースファイルのパス（相対パスはhost-agent/からの相対）
+  desktop_activity:
+    path: data/desktop_activity.db  # デスクトップアクティビティDB
+  file_changes:
+    path: data/file_changes.db      # ファイル変更イベントDB
 
 # デスクトップアクティビティ監視設定
 desktop_monitor:

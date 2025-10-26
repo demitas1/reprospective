@@ -13,7 +13,7 @@ from datetime import datetime
 # host-agent/common をインポートパスに追加
 sys.path.append(str(Path(__file__).parent.parent))
 
-from common.database import Database
+from common.database import FileChangeDatabase
 
 
 def format_size(size_bytes: int) -> str:
@@ -37,12 +37,12 @@ def format_size(size_bytes: int) -> str:
     return f"{size_bytes:.1f} TB"
 
 
-def show_events(database: Database, limit: int = 50):
+def show_events(database: FileChangeDatabase, limit: int = 50):
     """
     ファイルイベントを表示
 
     Args:
-        database: Databaseインスタンス
+        database: FileChangeDatabaseインスタンス
         limit: 表示する最大件数
     """
     events = database.get_recent_file_events(limit)
@@ -119,8 +119,8 @@ def main():
     parser.add_argument(
         '--db',
         type=str,
-        default='data/host_agent.db',
-        help='データベースファイルのパス（デフォルト: data/host_agent.db）'
+        default='data/file_changes.db',
+        help='データベースファイルのパス（デフォルト: data/file_changes.db）'
     )
 
     args = parser.parse_args()
@@ -138,7 +138,7 @@ def main():
         return 1
 
     # データベース接続
-    database = Database(db_path)
+    database = FileChangeDatabase(db_path)
 
     try:
         show_events(database, args.limit)

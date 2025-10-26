@@ -3,9 +3,10 @@
 
 # データベース設定
 database:
-  type: sqlite
-  sqlite:
-    path: data/host_agent.db
+  desktop_activity:
+    path: data/desktop_activity.db
+  file_changes:
+    path: data/file_changes.db
 
 # デスクトップアクティビティ監視設定
 desktop_monitor:
