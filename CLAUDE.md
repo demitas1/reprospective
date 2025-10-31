@@ -18,7 +18,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Status
 
-**Phase 2.1 - API Gateway & Database Integration** (2025-10-26時点)
+**Phase 2.1 - API Gateway & 設定同期 完了** (2025-10-31時点)
 
 ### ✅ Phase 1 完了 (2025-10-25)
 
@@ -40,7 +40,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 詳細: `services/database/README.md`, `scripts/README.md`
 
-### ✅ Phase 2.1 API Gateway 完了（2025-10-31）
+### ✅ Phase 2.1 API Gateway & 設定同期 完了（2025-10-31）
 
 #### services/api-gateway (FastAPI)
 **実装完了内容:**
@@ -50,6 +50,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - ✅ Docker Compose統合、ヘルスチェック実装
 - ✅ Swagger UI対応（http://localhost:8800/docs）
 - ✅ エラーハンドリング、ログ記録
+- ✅ API管理スクリプト（scripts/api-*.sh）
 
 **動作確認済み:**
 - ✅ 全CRUD操作（GET/POST/PUT/DELETE/PATCH）
@@ -59,15 +60,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 詳細: `services/api-gateway/README.md`
 
-### 🚧 Phase 2.1+ 次回実装予定
-
 #### host-agent設定同期機能
-- PostgreSQLから監視ディレクトリ設定を取得
-- FileSystemWatcherへの統合（動的設定変更）
-- YAML→PostgreSQL移行機能
-- フォールバック機能（DB接続失敗時）
+**実装完了内容:**
+- ✅ `common/config_sync.py`: PostgreSQL設定同期モジュール
+- ✅ `collectors/filesystem_watcher_v2.py`: PostgreSQL連携版ウォッチャー
+- ✅ 動的設定同期（60秒間隔）
+- ✅ YAML→PostgreSQL自動移行機能
+- ✅ フォールバック機能（DB接続失敗時はYAML使用）
+- ✅ 非同期処理（asyncpg + asyncio）
 
-詳細: `docs/design/phase2_implementation_plan.md`
+**動作確認済み:**
+- ✅ PostgreSQLからディレクトリ設定を自動取得
+- ✅ ディレクトリ追加時の自動監視開始（60秒以内）
+- ✅ ディレクトリ無効化時の自動監視停止（60秒以内）
+- ✅ 初回起動時のYAML→PostgreSQL移行
+- ✅ PostgreSQL接続失敗時のYAMLフォールバック
+
+詳細: `host-agent/README.md`, `docs/design/phase2_implementation_plan.md`
 
 ### 📋 Phase 2.2以降（計画中）
 
@@ -306,6 +315,39 @@ python scripts/reset_database.py --files    # ファイルDBのみ
 **次のステップ:**
 host-agent設定同期機能（PostgreSQLから設定取得、動的監視対象変更）
 
+### 2025-10-31: Phase 2.1完了（API Gateway & host-agent設定同期）
+
+**実装内容:**
+
+**API Gateway (FastAPI):**
+- `services/api-gateway/`: FastAPI RESTful API実装
+- `monitored_directories`テーブル用CRUD APIエンドポイント（GET/POST/PUT/DELETE/PATCH）
+- Pydantic v2モデル、バリデーション（絶対パス、重複チェック）
+- Docker Compose統合、ヘルスチェック、Swagger UI
+- API管理スクリプト5本（`scripts/api-*.sh`）
+
+**host-agent設定同期:**
+- `common/config_sync.py`: PostgreSQL設定同期モジュール（asyncpg使用）
+- `collectors/filesystem_watcher_v2.py`: PostgreSQL連携版ウォッチャー
+- 定期同期ロジック（60秒間隔）、動的ディレクトリ追加・削除
+- YAML→PostgreSQL自動移行機能
+- フォールバック機能（PostgreSQL接続失敗時はYAML使用）
+
+**技術的決定:**
+- asyncpg + asyncioで非同期PostgreSQL操作
+- 専用スレッドではなくasyncioイベントループで同期タスク実行
+- 接続プールをイベントループと同じスレッドで管理（競合回避）
+- Pydantic field_validator でCORS設定のカンマ区切り文字列をリストに変換
+
+**動作確認:**
+- PostgreSQLからディレクトリ設定を自動取得
+- API経由でディレクトリ追加→60秒以内に監視開始を確認
+- API経由でディレクトリ無効化→60秒以内に監視停止を確認
+- 初回起動時のYAML→PostgreSQL移行を確認
+
+**次のステップ:**
+Phase 2.2 - Web UI、または追加コレクター（BrowserActivityParser等）
+
 ### 2025-10-26: Phase 2基盤構築（PostgreSQL + 管理スクリプト）
 
 **実装内容:**
@@ -396,46 +438,49 @@ python scripts/show_file_events.py 50      # 最新50ファイルイベント
 
 **host-agent:**
 - `host-agent/collectors/linux_x11_monitor.py`: デスクトップモニター本体
-- `host-agent/collectors/filesystem_watcher.py`: ファイルシステムウォッチャー
+- `host-agent/collectors/filesystem_watcher.py`: ファイルシステムウォッチャー (v1)
+- `host-agent/collectors/filesystem_watcher_v2.py`: PostgreSQL連携版ウォッチャー
 - `host-agent/common/models.py`: データモデル
 - `host-agent/common/database.py`: SQLite操作
+- `host-agent/common/config_sync.py`: PostgreSQL設定同期
 - `host-agent/config/config.yaml`: 設定ファイル
 
 **infrastructure:**
 - `docker-compose.yml`: Docker Compose設定
 - `services/database/init/01_init_schema.sql`: PostgreSQLスキーマ
-- `scripts/*.sh`: 管理スクリプト
+- `services/database/init/02_add_monitored_directories.sql`: 監視ディレクトリテーブル
+- `services/api-gateway/`: FastAPI API Gateway
+- `scripts/*.sh`: 管理スクリプト（Docker、host-agent、API操作）
 - `docs/design/phase2_implementation_plan.md`: Phase 2実装計画
 
 ---
 
-## Next Steps - Phase 2.1実装
+## Next Steps - Phase 2.2以降
 
-**次回セッションで実装予定:**
+**次の実装候補:**
 
-1. **PostgreSQL `monitored_directories` テーブル追加**
-   - マイグレーションSQLの作成
-   - スキーマ更新
+### Option 1: Web UI (Phase 2.2)
+- React 19 + Vite + TypeScript
+- 監視ディレクトリ設定UI
+- 活動データ可視化（セッション、ファイル変更）
+- ダッシュボード機能
 
-2. **FastAPI API Gateway実装**
-   - `services/api-gateway/` ディレクトリ作成
-   - FastAPI基本構成（main.py, requirements.txt）
-   - monitored_directories CRUD APIエンドポイント
-   - Dockerfile & docker-compose.yml更新
+### Option 2: 追加コレクター
+- BrowserActivityParser: ブラウザ履歴解析
+- GitHubMonitor: GitHub API経由でコミット・PR追跡
+- SNSMonitor: Bluesky等のSNS投稿収集
 
-3. **host-agent設定読み込み機能拡張**
-   - `filesystem_watcher.py`: PostgreSQLからディレクトリ設定読み込み
-   - YAML→PostgreSQLフォールバック実装
-   - asyncpg依存追加
+### Option 3: AI分析エンジン (Phase 2.3)
+- LLM統合（Claude API / OpenAI API）
+- 活動データの自動要約・分類
+- 進捗推測・レポート生成
+- 対話的レビュー機能
 
-4. **動作確認**
-   - curlコマンドでAPI操作確認
-   - host-agentがPostgreSQL設定を読み込むことを確認
-
-詳細: `docs/design/phase2_implementation_plan.md`
+詳細: `docs/design/phase2_implementation_plan.md`, `docs/software_idea-ai_assited_todo.md`
 
 ---
 
 ## License
 
 Apache License 2.0
+- Always ask confirmation before use any git commands.

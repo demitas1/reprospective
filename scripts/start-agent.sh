@@ -154,7 +154,8 @@ if [ "$START_DESKTOP" = true ]; then
 fi
 
 if [ "$START_FILES" = true ]; then
-    if start_agent "filesystem-watcher" "collectors/filesystem_watcher.py"; then
+    # v2（PostgreSQL連携版）を優先的に使用
+    if start_agent "filesystem-watcher" "collectors/filesystem_watcher_v2.py"; then
         STARTED_COUNT=$((STARTED_COUNT + 1))
     fi
 fi

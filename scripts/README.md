@@ -188,13 +188,16 @@ host-agentのコレクターをバックグラウンドで起動します。
 - PIDファイル管理（`.pids/`ディレクトリ）
 - ログファイル出力（`logs/`ディレクトリ）
 - 既に実行中の場合はスキップ
+- **ファイルウォッチャーは`filesystem_watcher_v2.py`（PostgreSQL連携版）を使用**
 
 **例:**
 ```bash
 ./scripts/start-agent.sh              # すべて起動
 ./scripts/start-agent.sh --desktop    # デスクトップのみ
-./scripts/start-agent.sh --files      # ファイルウォッチャーのみ
+./scripts/start-agent.sh --files      # ファイルウォッチャーv2のみ
 ```
+
+**注意:** ファイルウォッチャーはPostgreSQL連携版（v2）を使用します。監視対象ディレクトリはPostgreSQLから動的に取得され、API経由で変更可能です。
 
 #### stop-agent.sh
 実行中のhost-agentコレクターを停止します。
@@ -263,25 +266,29 @@ host-agentのコレクターをバックグラウンドで起動します。
 
 ### API経由での監視ディレクトリ管理
 
+`filesystem_watcher_v2.py`を使用している場合、監視対象ディレクトリをAPI経由で動的に変更できます。変更は60秒以内に自動的に反映されます。
+
 ```bash
 # ディレクトリ一覧確認
 ./scripts/api-list-directories.sh
 
-# 新しいディレクトリを追加
+# 新しいディレクトリを追加（60秒以内に監視開始）
 ./scripts/api-add-directory.sh /home/user/projects "プロジェクト" "開発用"
 
 # ディレクトリ情報を更新
 ./scripts/api-update-directory.sh 1 --name "新しい名前"
 
-# 一時的に無効化
+# 一時的に無効化（60秒以内に監視停止）
 ./scripts/api-toggle-directory.sh 1
 
-# 再度有効化
+# 再度有効化（60秒以内に監視再開）
 ./scripts/api-toggle-directory.sh 1
 
 # ディレクトリを削除
 ./scripts/api-delete-directory.sh 1
 ```
+
+**自動同期:** `filesystem_watcher_v2.py`は60秒間隔でPostgreSQLから設定を取得し、監視対象を自動的に追加・削除します。
 
 ### エージェントのログ確認
 

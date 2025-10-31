@@ -7,5 +7,5 @@ pyyaml>=6.0
 watchdog>=4.0.0
 
 # データベース（SQLiteは標準ライブラリに含まれる）
-# 将来的なPostgreSQL対応用
-# psycopg2-binary>=2.9.0
+# PostgreSQL非同期接続（設定同期用）
+asyncpg>=0.29.0

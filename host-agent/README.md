@@ -8,7 +8,8 @@ Host Agentは、ユーザーのデスクトップ上での活動を自動的に�
 
 現在実装されている機能：
 - **DesktopActivityMonitor (Linux X11)**: アクティブウィンドウの追跡とセッション記録
-- **FileSystemWatcher**: 指定ディレクトリ配下のファイル変更監視とイベント記録
+- **FileSystemWatcher v1**: 指定ディレクトリ配下のファイル変更監視とイベント記録（YAML設定）
+- **FileSystemWatcher v2** ✨: PostgreSQL連携版ウォッチャー（動的設定同期、API経由管理）
 
 ## ディレクトリ構成
 
@@ -16,11 +17,13 @@ Host Agentは、ユーザーのデスクトップ上での活動を自動的に�
 host-agent/
 ├── collectors/                # データ収集コンポーネント
 │   ├── linux_x11_monitor.py   # Linux X11デスクトップモニター
-│   ├── filesystem_watcher.py  # ファイルシステム監視
+│   ├── filesystem_watcher.py  # ファイルシステム監視 (v1: YAML設定)
+│   ├── filesystem_watcher_v2.py  # ✨ PostgreSQL連携版ウォッチャー
 │   └── __init__.py
 ├── common/                    # 共通モジュール
 │   ├── models.py              # データモデル定義
 │   ├── database.py            # データベース操作
+│   ├── config_sync.py         # ✨ PostgreSQL設定同期
 │   └── __init__.py
 ├── config/                    # 設定ファイル
 │   ├── config.yaml            # 設定ファイル（.gitignore対象）
@@ -113,13 +116,35 @@ python collectors/linux_x11_monitor.py
 
 ### ファイルシステムウォッチャーの起動
 
+#### v2（PostgreSQL連携版）- 推奨
+
 ```bash
 # 仮想環境を有効化
 source venv/bin/activate
 
-# ファイルシステムウォッチャーを起動
+# ファイルシステムウォッチャー v2を起動
+python collectors/filesystem_watcher_v2.py
+```
+
+**特徴:**
+- PostgreSQLから監視対象ディレクトリを動的に取得
+- API経由でディレクトリを追加・削除可能（60秒以内に自動反映）
+- YAML設定からの自動移行機能
+- PostgreSQL接続失敗時はYAML設定にフォールバック
+
+#### v1（YAML設定のみ）
+
+```bash
+# 仮想環境を有効化
+source venv/bin/activate
+
+# ファイルシステムウォッチャー v1を起動
 python collectors/filesystem_watcher.py
 ```
+
+**特徴:**
+- YAML設定ファイルから監視対象を読み込み
+- 設定変更には再起動が必要
 
 指定ディレクトリのファイル変更を監視し、イベントを `data/file_changes.db` に保存します。
 
@@ -189,6 +214,45 @@ python scripts/reset_database.py --desktop    # デスクトップDBのみ削除
 python scripts/reset_database.py --files      # ファイルDBのみ削除
 ```
 
+## API経由での監視ディレクトリ管理（v2のみ）
+
+`filesystem_watcher_v2.py`を使用している場合、プロジェクトルートのAPIスクリプトを使って監視対象ディレクトリを動的に管理できます。
+
+### ディレクトリの追加
+
+```bash
+cd /path/to/reprospective
+./scripts/api-add-directory.sh /home/user/projects "プロジェクト" "開発用"
+```
+
+追加後、60秒以内にファイルウォッチャーが自動的に監視を開始します。
+
+### ディレクトリの一覧確認
+
+```bash
+./scripts/api-list-directories.sh
+```
+
+### ディレクトリの無効化/有効化
+
+```bash
+# 無効化（監視を一時停止）
+./scripts/api-toggle-directory.sh <ID>
+
+# 再度有効化
+./scripts/api-toggle-directory.sh <ID>
+```
+
+変更は60秒以内に自動的に反映されます。
+
+### ディレクトリの削除
+
+```bash
+./scripts/api-delete-directory.sh <ID>
+```
+
+詳細は`scripts/README.md`を参照してください。
+
 ## アーキテクチャ
 
 ### データベース分離
@@ -199,10 +263,21 @@ python scripts/reset_database.py --files      # ファイルDBのみ削除
 
 詳細は`docs/design/technical_decision-database_separation.md`を参照。
 
+### PostgreSQL連携（v2）
+
+`filesystem_watcher_v2.py`は以下の機能を提供：
+
+- **動的設定同期**: PostgreSQLから監視対象を60秒間隔で取得
+- **自動移行**: 初回起動時にYAML設定をPostgreSQLへ自動移行
+- **フォールバック**: PostgreSQL接続失敗時はYAML設定を使用
+- **API連携**: REST API経由でディレクトリの追加・削除が可能
+
+詳細は`common/config_sync.py`を参照。
+
 ### 将来的な拡張
 
-- PostgreSQL同期（ローカルキャッシュ+バッチ同期）
-- Web UIでの設定管理
+- SQLiteからPostgreSQLへのバッチ同期（ローカルキャッシュ）
+- Web UIでの活動データ可視化
 - Wayland対応
 - BrowserActivityParser
 

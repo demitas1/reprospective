@@ -169,8 +169,34 @@ python collectors/linux_x11_monitor.py
 ```bash
 cd host-agent
 source venv/bin/activate
+# v1: YAML設定のみ使用
 python collectors/filesystem_watcher.py
+# v2: PostgreSQL連携版（推奨）
+python collectors/filesystem_watcher_v2.py
 ```
+
+### API経由での監視ディレクトリ管理
+
+監視対象ディレクトリをAPI経由で動的に追加・削除できます：
+
+```bash
+# ディレクトリ一覧確認
+./scripts/api-list-directories.sh
+
+# 新しいディレクトリを追加
+./scripts/api-add-directory.sh /home/user/projects "プロジェクト" "開発用"
+
+# ディレクトリ情報を更新
+./scripts/api-update-directory.sh 1 --name "新しい名前"
+
+# 一時的に無効化
+./scripts/api-toggle-directory.sh 1
+
+# ディレクトリを削除
+./scripts/api-delete-directory.sh 1
+```
+
+**自動同期**: `filesystem_watcher_v2.py`は60秒間隔でPostgreSQLから設定を取得し、監視対象を自動的に追加・削除します。
 
 ### 管理スクリプト詳細
 
@@ -203,14 +229,21 @@ reprospective/
 │   ├── clean-host.sh              # host-agent DBクリア
 │   ├── start-agent.sh             # host-agent起動
 │   ├── stop-agent.sh              # host-agent停止
+│   ├── api-list-directories.sh    # ✅ ディレクトリ一覧取得
+│   ├── api-add-directory.sh       # ✅ ディレクトリ追加
+│   ├── api-update-directory.sh    # ✅ ディレクトリ更新
+│   ├── api-toggle-directory.sh    # ✅ 有効/無効切り替え
+│   ├── api-delete-directory.sh    # ✅ ディレクトリ削除
 │   └── README.md
 ├── host-agent/                    # ✅ ホスト環境エージェント
 │   ├── collectors/                # データ収集コンポーネント
 │   │   ├── linux_x11_monitor.py   # デスクトップモニター
-│   │   └── filesystem_watcher.py  # ファイルシステム監視
+│   │   ├── filesystem_watcher.py  # ファイルシステム監視 (v1)
+│   │   └── filesystem_watcher_v2.py # ✅ PostgreSQL連携版
 │   ├── common/                    # 共通モジュール
 │   │   ├── models.py              # データモデル
-│   │   └── database.py            # データベース操作
+│   │   ├── database.py            # データベース操作
+│   │   └── config_sync.py         # ✅ PostgreSQL設定同期
 │   ├── config/                    # 設定ファイル
 │   │   └── config.yaml
 │   ├── data/                      # ローカルデータベース
@@ -219,9 +252,20 @@ reprospective/
 ├── services/                      # Dockerコンテナサービス
 │   ├── database/                  # ✅ PostgreSQL 16
 │   │   ├── init/                  # スキーマ初期化SQL
+│   │   │   ├── 01_init_schema.sql
+│   │   │   └── 02_add_monitored_directories.sql  # ✅
 │   │   ├── conf/                  # PostgreSQL設定
 │   │   └── README.md
-│   ├── api-gateway/               # 🚧 FastAPI (Phase 2.1)
+│   ├── api-gateway/               # ✅ FastAPI (Phase 2.1 完了)
+│   │   ├── app/
+│   │   │   ├── main.py
+│   │   │   ├── database.py
+│   │   │   ├── config.py
+│   │   │   ├── models/
+│   │   │   └── routers/
+│   │   ├── Dockerfile
+│   │   ├── requirements.txt
+│   │   └── README.md
 │   ├── collector-service/         # 📋 API経由データ収集（計画中）
 │   ├── ai-analyzer/               # 📋 AI分析エンジン（計画中）
 │   └── web-ui/                    # 📋 Webフロントエンド（Phase 2.2）
@@ -264,16 +308,25 @@ Apache License 2.0 - 詳細は [LICENSE.txt](./LICENSE.txt) を参照
 
 詳細: [`services/database/README.md`](./services/database/README.md), [`scripts/README.md`](./scripts/README.md)
 
-### ✅ Phase 2.1 API Gateway 完了 (2025-10-31)
+### ✅ Phase 2.1 API Gateway & 設定同期 完了 (2025-10-31)
 
-- **API Gateway** (FastAPI): 監視ディレクトリ設定のCRUD API実装完了
+**API Gateway (FastAPI):**
+- **監視ディレクトリ設定のCRUD API**: 完全実装
 - **PostgreSQL統合**: `monitored_directories`テーブル作成、CRUD操作完全動作
 - **RESTful API**: GET/POST/PUT/DELETE/PATCH エンドポイント実装
 - **Swagger UI**: http://localhost:8800/docs でAPIドキュメント閲覧可能
 - **Docker統合**: docker-compose.ymlに統合、自動起動・ヘルスチェック対応
 - **バリデーション**: 絶対パスチェック、重複チェック、エラーハンドリング完備
+- **API管理スクリプト**: curlベースの5つの管理スクリプト (`scripts/api-*.sh`)
 
-詳細: [`services/api-gateway/README.md`](./services/api-gateway/README.md)
+**host-agent設定同期:**
+- **PostgreSQL連携**: FileSystemWatcherV2がPostgreSQLから監視対象を動的取得
+- **自動同期**: 60秒間隔で設定を自動同期、ディレクトリの追加・削除を自動反映
+- **YAML→PostgreSQL移行**: 初回起動時にYAML設定を自動的にPostgreSQLへ移行
+- **フォールバック機能**: PostgreSQL接続失敗時はYAML設定を使用
+- **非同期処理**: asyncpg使用、asyncioイベントループで効率的に動作
+
+詳細: [`services/api-gateway/README.md`](./services/api-gateway/README.md), [`host-agent/README.md`](./host-agent/README.md)
 
 **動作確認済みエンドポイント:**
 ```bash
