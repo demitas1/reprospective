@@ -220,7 +220,8 @@ reprospective/
 │       ├── host_agent-desktop_activity_monitor.md
 │       ├── host_agent-filesystem_watcher.md
 │       ├── technical_decision-database_separation.md
-│       └── phase2_implementation_plan.md  # ✅ Phase 2実装計画
+│       ├── phase2_1_implementation_plan.md  # ✅ Phase 2.1実装計画（完了）
+│       └── phase2_2_implementation_plan.md  # 📋 Phase 2.2実装計画
 ├── scripts/                       # ✅ 管理スクリプト
 │   ├── start.sh                   # PostgreSQL起動
 │   ├── stop.sh                    # PostgreSQL停止
@@ -359,7 +360,8 @@ PATCH  /api/v1/directories/{id}/toggle   # 有効/無効切り替え
 ## 関連ドキュメント
 
 - [企画書](./docs/software_idea-ai_assited_todo.md) - プロジェクトの背景と詳細な機能説明
-- [Phase 2実装計画](./docs/design/phase2_implementation_plan.md) - Phase 2.1/2.2の実装計画
+- [Phase 2.1実装計画](./docs/design/phase2_1_implementation_plan.md) - API Gateway & host-agent設定同期（完了）
+- [Phase 2.2実装計画](./docs/design/phase2_2_implementation_plan.md) - Web UI実装計画
 - [host-agent README](./host-agent/README.md) - host-agentの詳細説明
 - [PostgreSQL README](./services/database/README.md) - PostgreSQL設定とスキーマ
 - [API Gateway README](./services/api-gateway/README.md) - FastAPI APIの使い方

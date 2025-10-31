@@ -76,7 +76,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - ✅ 初回起動時のYAML→PostgreSQL移行
 - ✅ PostgreSQL接続失敗時のYAMLフォールバック
 
-詳細: `host-agent/README.md`, `docs/design/phase2_implementation_plan.md`
+詳細: `host-agent/README.md`, `docs/design/phase2_1_implementation_plan.md`
 
 ### 📋 Phase 2.2以降（計画中）
 
@@ -100,7 +100,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - データモデル定義
 - ユーティリティライブラリ
 
-詳細: `docs/software_idea-ai_assited_todo.md`, `docs/design/phase2_implementation_plan.md`
+詳細: `docs/software_idea-ai_assited_todo.md`, `docs/design/phase2_2_implementation_plan.md`
 
 ---
 
@@ -158,7 +158,8 @@ reprospective/
 │   └── README.md                         ✅ スクリプトドキュメント
 │
 ├── docs/design/                          # 設計ドキュメント
-│   └── phase2_implementation_plan.md     ✅ Phase 2実装計画
+│   ├── phase2_1_implementation_plan.md   ✅ Phase 2.1実装計画（完了）
+│   └── phase2_2_implementation_plan.md   📋 Phase 2.2実装計画
 │
 ├── docker-compose.yml                    ✅ Docker Compose設定
 └── env.example                           ✅ 環境変数テンプレート
@@ -355,7 +356,7 @@ Phase 2.2 - Web UI、または追加コレクター（BrowserActivityParser等�
 - **管理スクリプト**: コンテナ起動・停止、DB初期化、クリーンアップ（7スクリプト）
 - **host-agent管理**: バックグラウンド起動・停止スクリプト（PID管理、個別起動対応）
 - **ドキュメント**: `services/database/README.md`, `scripts/README.md`
-- **Phase 2実装計画**: `docs/design/phase2_implementation_plan.md`作成
+- **Phase 2実装計画**: `docs/design/phase2_1_implementation_plan.md`作成
 
 **技術的決定:**
 - Docker Compose v2使用（`docker compose`コマンド）
@@ -403,7 +404,8 @@ docs/
     ├── host_agent-desktop_activity_monitor.md            # DesktopActivityMonitor設計
     ├── host_agent-filesystem_watcher.md                  # FileSystemWatcher設計
     ├── technical_decision-database_separation.md         # DB分離アーキテクチャ
-    └── phase2_implementation_plan.md                     # Phase 2実装計画
+    ├── phase2_1_implementation_plan.md                   # Phase 2.1実装計画（完了）
+    └── phase2_2_implementation_plan.md                   # Phase 2.2実装計画
 ```
 
 設計ドキュメントは概要のみ記載。詳細実装はソースコードとREADMEを参照。
@@ -451,7 +453,8 @@ python scripts/show_file_events.py 50      # 最新50ファイルイベント
 - `services/database/init/02_add_monitored_directories.sql`: 監視ディレクトリテーブル
 - `services/api-gateway/`: FastAPI API Gateway
 - `scripts/*.sh`: 管理スクリプト（Docker、host-agent、API操作）
-- `docs/design/phase2_implementation_plan.md`: Phase 2実装計画
+- `docs/design/phase2_1_implementation_plan.md`: Phase 2.1実装計画（完了）
+- `docs/design/phase2_2_implementation_plan.md`: Phase 2.2実装計画
 
 ---
 
@@ -476,7 +479,7 @@ python scripts/show_file_events.py 50      # 最新50ファイルイベント
 - 進捗推測・レポート生成
 - 対話的レビュー機能
 
-詳細: `docs/design/phase2_implementation_plan.md`, `docs/software_idea-ai_assited_todo.md`
+詳細: `docs/design/phase2_2_implementation_plan.md`, `docs/software_idea-ai_assited_todo.md`
 
 ---
 
