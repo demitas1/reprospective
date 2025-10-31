@@ -74,6 +74,101 @@ host-agentのローカルSQLiteデータベースを削除します。
 
 **⚠️ 警告:** ローカルの全活動データが削除されます
 
+### API管理スクリプト
+
+#### api-list-directories.sh
+監視対象ディレクトリの一覧を取得・表示します。
+
+```bash
+./scripts/api-list-directories.sh           # 全ディレクトリ取得
+./scripts/api-list-directories.sh --enabled  # 有効なディレクトリのみ取得
+```
+
+**機能:**
+- 全ディレクトリまたは有効なディレクトリのみ取得
+- jqがあれば見やすく整形表示
+- カラー表示対応
+
+#### api-add-directory.sh
+新しい監視対象ディレクトリを追加します。
+
+```bash
+./scripts/api-add-directory.sh <ディレクトリパス> [表示名] [説明]
+```
+
+**例:**
+```bash
+./scripts/api-add-directory.sh /home/user/projects "プロジェクト" "開発用"
+./scripts/api-add-directory.sh /home/user/Documents "ドキュメント"
+./scripts/api-add-directory.sh /home/user/work
+```
+
+**機能:**
+- 絶対パス自動変換（相対パス指定時）
+- 重複チェック
+- 詳細なエラーメッセージ表示
+
+#### api-update-directory.sh
+既存ディレクトリの情報を更新します（部分更新対応）。
+
+```bash
+./scripts/api-update-directory.sh <ID> [オプション]
+```
+
+**オプション:**
+- `--path <新パス>`: ディレクトリパスを変更
+- `--name <表示名>`: 表示名を変更
+- `--desc <説明>`: 説明を変更
+- `--enable`: 有効化
+- `--disable`: 無効化
+
+**例:**
+```bash
+./scripts/api-update-directory.sh 1 --name "新しい名前"
+./scripts/api-update-directory.sh 1 --desc "新しい説明"
+./scripts/api-update-directory.sh 1 --name "プロジェクト" --desc "開発用ディレクトリ"
+./scripts/api-update-directory.sh 1 --disable
+```
+
+**機能:**
+- 更新前後の情報表示
+- 複数項目同時更新可能
+- 絶対パス自動変換
+
+#### api-toggle-directory.sh
+ディレクトリの有効/無効を切り替えます。
+
+```bash
+./scripts/api-toggle-directory.sh <ID>
+```
+
+**例:**
+```bash
+./scripts/api-toggle-directory.sh 1
+```
+
+**機能:**
+- ワンクリックで有効/無効切り替え
+- 現在の状態を表示
+- 切り替え後のメッセージ表示
+
+#### api-delete-directory.sh
+ディレクトリを削除します（確認プロンプトあり）。
+
+```bash
+./scripts/api-delete-directory.sh <ID>
+```
+
+**例:**
+```bash
+./scripts/api-delete-directory.sh 1
+```
+
+**機能:**
+- 削除前に対象情報を表示
+- 確認プロンプト（`yes`入力必須）
+- 安全な削除操作
+
 ### host-agent管理スクリプト
 
 #### start-agent.sh
@@ -164,6 +259,28 @@ host-agentのコレクターをバックグラウンドで起動します。
 # エージェントとコンテナを停止
 ./scripts/stop-agent.sh
 ./scripts/stop.sh
+```
+
+### API経由での監視ディレクトリ管理
+
+```bash
+# ディレクトリ一覧確認
+./scripts/api-list-directories.sh
+
+# 新しいディレクトリを追加
+./scripts/api-add-directory.sh /home/user/projects "プロジェクト" "開発用"
+
+# ディレクトリ情報を更新
+./scripts/api-update-directory.sh 1 --name "新しい名前"
+
+# 一時的に無効化
+./scripts/api-toggle-directory.sh 1
+
+# 再度有効化
+./scripts/api-toggle-directory.sh 1
+
+# ディレクトリを削除
+./scripts/api-delete-directory.sh 1
 ```
 
 ### エージェントのログ確認
