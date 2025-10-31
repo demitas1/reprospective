@@ -36,6 +36,38 @@ services:
     networks:
       - reprospective-network
 
+  # API Gateway (FastAPI)
+  api-gateway:
+    build: ./services/api-gateway
+    container_name: reprospective-api
+    restart: unless-stopped
+
+    environment:
+      # データベース接続URL
+      DATABASE_URL: postgresql://${POSTGRES_USER:-reprospective_user}:${POSTGRES_PASSWORD:-change_this_password}@database:5432/${POSTGRES_DB:-reprospective}
+      # API設定
+      API_PORT: 8000
+      API_HOST: 0.0.0.0
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+    ports:
+      - "${API_GATEWAY_PORT:-8800}:8000"
+
+    depends_on:
+      database:
+        condition: service_healthy
+
+    networks:
+      - reprospective-network
+
+    # ヘルスチェック
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
 # 永続化ボリューム
 volumes:
   postgres_data:

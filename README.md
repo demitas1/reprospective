@@ -35,12 +35,12 @@ Reprospectiveは、ユーザーの日常的な作業活動を自動的に収集�
 
 ### コンテナサービス (`services/`)
 
-Dockerコンテナとして動作するマイクロサービス（Phase 2以降で実装予定）：
+Dockerコンテナとして動作するマイクロサービス：
 
-- **database** 🚧: PostgreSQL（次回実装予定）
+- **database** ✅: PostgreSQL 16（実装完了）
+- **api-gateway** ✅: FastAPI RESTful API（実装完了）
 - **collector-service** 📋: GitHub/SNS等のAPI経由データ収集（計画中）
 - **ai-analyzer** 📋: AI分析エンジン（要約、分類、進捗推測）（計画中）
-- **api-gateway** 📋: APIゲートウェイ（計画中）
 - **web-ui** 📋: Webフロントエンド（レビュー、計画、可視化）（計画中）
 
 ### 共有ライブラリ (`shared/`)
@@ -109,25 +109,25 @@ sudo pacman -S xdotool xorg-xprop
 vim config/config.yaml
 ```
 
-#### 4. PostgreSQLサービスの起動（Phase 2）
+#### 4. PostgreSQLサービスの起動
 
 ```bash
 # プロジェクトルートに戻る
 cd ..
 
-# PostgreSQLコンテナを起動
-docker-compose up -d database
+# PostgreSQLコンテナを起動（自動的にスキーマ初期化）
+./scripts/start.sh
 
 # 起動確認
-docker-compose ps
-docker-compose logs database
+docker compose ps
+docker compose logs database
 ```
 
 接続確認：
 
 ```bash
 # psqlで接続テスト
-docker-compose exec database psql -U reprospective_user -d reprospective
+docker compose exec database psql -U reprospective_user -d reprospective
 
 # または、ホストから直接接続
 psql -h localhost -p 5432 -U reprospective_user -d reprospective
@@ -135,7 +135,28 @@ psql -h localhost -p 5432 -U reprospective_user -d reprospective
 
 ## 使い方
 
-### デスクトップモニターの起動
+### 推奨: 管理スクリプトを使用
+
+```bash
+# PostgreSQL起動
+./scripts/start.sh
+
+# host-agentをバックグラウンドで起動（全コレクター）
+./scripts/start-agent.sh
+
+# データ確認
+cd host-agent && source venv/bin/activate
+python scripts/show_sessions.py          # デスクトップセッション表示
+python scripts/show_file_events.py       # ファイルイベント表示
+
+# 停止
+./scripts/stop-agent.sh                  # host-agent停止
+./scripts/stop.sh                        # PostgreSQL停止
+```
+
+### 個別起動（開発・デバッグ用）
+
+デスクトップモニターの起動（フォアグラウンド）:
 
 ```bash
 cd host-agent
@@ -143,7 +164,7 @@ source venv/bin/activate
 python collectors/linux_x11_monitor.py
 ```
 
-### ファイルシステムウォッチャーの起動
+ファイルシステムウォッチャーの起動（フォアグラウンド）:
 
 ```bash
 cd host-agent
@@ -151,17 +172,11 @@ source venv/bin/activate
 python collectors/filesystem_watcher.py
 ```
 
-### データの確認
+### 管理スクリプト詳細
 
-```bash
-# デスクトップセッション表示
-python scripts/show_sessions.py
+管理スクリプトの詳細な使い方は [`scripts/README.md`](./scripts/README.md) を参照してください。
 
-# ファイルイベント表示
-python scripts/show_file_events.py
-```
-
-詳細は [`host-agent/README.md`](./host-agent/README.md) を参照してください。
+host-agentの詳細は [`host-agent/README.md`](./host-agent/README.md) を参照してください。
 
 ## 開発
 
@@ -171,10 +186,25 @@ python scripts/show_file_events.py
 reprospective/
 ├── CLAUDE.md                      # プロジェクト指示書
 ├── README.md                      # このファイル
+├── docker-compose.yml             # ✅ Docker Compose設定
+├── env.example                    # ✅ 環境変数テンプレート
 ├── docs/                          # ドキュメント
 │   ├── software_idea-ai_assited_todo.md  # 企画書
 │   └── design/                    # 設計ドキュメント
-├── host-agent/                    # ✅ ホスト環境エージェント（実装済み）
+│       ├── host_agent-desktop_activity_monitor.md
+│       ├── host_agent-filesystem_watcher.md
+│       ├── technical_decision-database_separation.md
+│       └── phase2_implementation_plan.md  # ✅ Phase 2実装計画
+├── scripts/                       # ✅ 管理スクリプト
+│   ├── start.sh                   # PostgreSQL起動
+│   ├── stop.sh                    # PostgreSQL停止
+│   ├── reset-db.sh                # データベースリセット
+│   ├── clean-docker.sh            # Docker完全クリーンアップ
+│   ├── clean-host.sh              # host-agent DBクリア
+│   ├── start-agent.sh             # host-agent起動
+│   ├── stop-agent.sh              # host-agent停止
+│   └── README.md
+├── host-agent/                    # ✅ ホスト環境エージェント
 │   ├── collectors/                # データ収集コンポーネント
 │   │   ├── linux_x11_monitor.py   # デスクトップモニター
 │   │   └── filesystem_watcher.py  # ファイルシステム監視
@@ -182,16 +212,20 @@ reprospective/
 │   │   ├── models.py              # データモデル
 │   │   └── database.py            # データベース操作
 │   ├── config/                    # 設定ファイル
+│   │   └── config.yaml
 │   ├── data/                      # ローカルデータベース
 │   ├── scripts/                   # デバッグツール
 │   └── README.md
-├── services/                      # 🚧 Dockerコンテナサービス（Phase 2以降）
-│   ├── database/                  # PostgreSQL
-│   ├── collector-service/         # API経由データ収集
-│   ├── ai-analyzer/               # AI分析エンジン
-│   ├── api-gateway/               # APIゲートウェイ
-│   └── web-ui/                    # Webフロントエンド
-└── shared/                        # 🚧 共有ライブラリ（Phase 2以降）
+├── services/                      # Dockerコンテナサービス
+│   ├── database/                  # ✅ PostgreSQL 16
+│   │   ├── init/                  # スキーマ初期化SQL
+│   │   ├── conf/                  # PostgreSQL設定
+│   │   └── README.md
+│   ├── api-gateway/               # 🚧 FastAPI (Phase 2.1)
+│   ├── collector-service/         # 📋 API経由データ収集（計画中）
+│   ├── ai-analyzer/               # 📋 AI分析エンジン（計画中）
+│   └── web-ui/                    # 📋 Webフロントエンド（Phase 2.2）
+└── shared/                        # 📋 共有ライブラリ（計画中）
 ```
 
 ### 開発ガイドライン
@@ -210,9 +244,9 @@ Apache License 2.0 - 詳細は [LICENSE.txt](./LICENSE.txt) を参照
 
 ## プロジェクトステータス
 
-**Phase 1 - 基盤実装フェーズ** (2025-10-25時点)
+**Phase 2.1 - API Gateway 完了** (2025-10-31時点)
 
-### ✅ 実装済み
+### ✅ Phase 1 完了 (2025-10-25)
 
 - **DesktopActivityMonitor** (Linux X11): デスクトップアクティビティ追跡
 - **FileSystemWatcher**: ファイル変更監視
@@ -222,19 +256,58 @@ Apache License 2.0 - 詳細は [LICENSE.txt](./LICENSE.txt) を参照
 
 詳細: [`host-agent/README.md`](./host-agent/README.md)
 
-### 🚧 次回実装予定 (Phase 2)
+### ✅ Phase 2基盤 完了 (2025-10-26)
 
-- PostgreSQL同期機能（ローカルキャッシュ+中央DB）
-- Docker Compose環境構築
-- Web UIプロトタイプ
+- **PostgreSQL 16コンテナ**: Docker Compose設定、スキーマ初期化
+- **管理スクリプト**: コンテナ・host-agent起動/停止、データクリーンアップ（7スクリプト）
+- **ドキュメント**: 管理スクリプトREADME、PostgreSQL設定ガイド
 
-### 📋 計画中
+詳細: [`services/database/README.md`](./services/database/README.md), [`scripts/README.md`](./scripts/README.md)
 
-- BrowserActivityParser（ブラウザ活動解析）
-- GitHubMonitor（コミット・PR追跡）
-- SNSMonitor（Bluesky投稿収集）
-- AI分析エンジン
+### ✅ Phase 2.1 API Gateway 完了 (2025-10-31)
+
+- **API Gateway** (FastAPI): 監視ディレクトリ設定のCRUD API実装完了
+- **PostgreSQL統合**: `monitored_directories`テーブル作成、CRUD操作完全動作
+- **RESTful API**: GET/POST/PUT/DELETE/PATCH エンドポイント実装
+- **Swagger UI**: http://localhost:8800/docs でAPIドキュメント閲覧可能
+- **Docker統合**: docker-compose.ymlに統合、自動起動・ヘルスチェック対応
+- **バリデーション**: 絶対パスチェック、重複チェック、エラーハンドリング完備
+
+詳細: [`services/api-gateway/README.md`](./services/api-gateway/README.md)
+
+**動作確認済みエンドポイント:**
+```bash
+# ヘルスチェック
+GET  /health              # API稼働状態確認
+GET  /health/db           # データベース接続確認
+
+# ディレクトリ管理
+GET    /api/v1/directories/              # 全ディレクトリ取得
+GET    /api/v1/directories/{id}          # 特定ディレクトリ取得
+POST   /api/v1/directories/              # ディレクトリ追加
+PUT    /api/v1/directories/{id}          # ディレクトリ更新
+DELETE /api/v1/directories/{id}          # ディレクトリ削除
+PATCH  /api/v1/directories/{id}/toggle   # 有効/無効切り替え
+```
+
+### 🚧 Phase 2.1+ 次回実装予定
+
+- **host-agent設定同期**: PostgreSQLから監視ディレクトリを取得
+- **FileSystemWatcher統合**: DB設定に基づく動的監視対象変更
+
+### 📋 Phase 2.2以降 計画中
+
+- **Web UI** (React 19 + Vite): 監視ディレクトリ設定UI、活動データ可視化
+- **BrowserActivityParser**: ブラウザ活動解析
+- **GitHubMonitor**: コミット・PR追跡
+- **SNSMonitor**: Bluesky投稿収集
+- **AI分析エンジン**: 活動データ分析・要約
 
 ## 関連ドキュメント
 
 - [企画書](./docs/software_idea-ai_assited_todo.md) - プロジェクトの背景と詳細な機能説明
+- [Phase 2実装計画](./docs/design/phase2_implementation_plan.md) - Phase 2.1/2.2の実装計画
+- [host-agent README](./host-agent/README.md) - host-agentの詳細説明
+- [PostgreSQL README](./services/database/README.md) - PostgreSQL設定とスキーマ
+- [API Gateway README](./services/api-gateway/README.md) - FastAPI APIの使い方
+- [管理スクリプト README](./scripts/README.md) - 管理スクリプトの使い方
