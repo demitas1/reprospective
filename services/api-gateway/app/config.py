@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     # CORS設定（開発用）
     cors_origins: list[str] = ["http://localhost:3333", "http://localhost:3000"]
 
+    # デバッグ設定
+    debug_mode: bool = False  # デフォルトは無効（本番環境用）
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, v):

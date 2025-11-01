@@ -49,9 +49,15 @@ services:
       API_PORT: 8000
       API_HOST: 0.0.0.0
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # デバッグモード設定
+      DEBUG_MODE: ${DEBUG:-false}
 
     ports:
       - "${API_GATEWAY_PORT:-8800}:8000"
+
+    volumes:
+      # ログディレクトリをホストにマウント（デバッグ用）
+      - ./logs:/var/log/frontend:rw
 
     depends_on:
       database:

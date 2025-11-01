@@ -9,7 +9,7 @@ import logging
 
 from app.config import settings
 from app.database import init_db_pool, close_db_pool
-from app.routers import health, directories
+from app.routers import health, directories, debug
 
 # ロギング設定
 logging.basicConfig(
@@ -55,6 +55,11 @@ app.add_middleware(
 # ルーター登録
 app.include_router(health.router)
 app.include_router(directories.router)
+
+# デバッグモード有効時のみデバッグルーター登録
+if settings.debug_mode:
+    app.include_router(debug.router)
+    logger.info("デバッグエンドポイント有効化")
 
 
 @app.get("/")
