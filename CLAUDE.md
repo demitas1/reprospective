@@ -5,6 +5,7 @@
 ドキュメントも指定がない場合は日本語で作成
 コーディングはSOLID原則に従い、簡潔で拡張しやすいものにする
 ディレクトリ名、ファイル名は英語を使用
+git commit は実行前に必ず確認を求める
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -486,4 +487,3 @@ python scripts/show_file_events.py 50      # 最新50ファイルイベント
 ## License
 
 Apache License 2.0
-- Always ask confirmation before use any git commands.

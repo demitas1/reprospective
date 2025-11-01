@@ -38,9 +38,9 @@ Phase 2.2では、監視ディレクトリ設定のためのWebフロントエ�
 ### 技術スタック
 
 **フロントエンド:**
-- **フレームワーク**: React 19
-- **ビルドツール**: Vite
-- **言語**: TypeScript
+- **フレームワーク**: React 19.2.0（最新版、実験的使用）
+- **ビルドツール**: Vite 6.x
+- **言語**: TypeScript 5.x
 - **UIライブラリ**:
   - Tailwind CSS（スタイリング）
   - Shadcn/ui（コンポーネント）
@@ -125,7 +125,8 @@ services/web-ui/
 │   ├── types/
 │   │   └── directory.ts              # 型定義
 │   ├── lib/
-│   │   └── utils.ts                  # ユーティリティ
+│   │   ├── utils.ts                  # ユーティリティ
+│   │   └── validators.ts             # ★ Zodバリデーションスキーマ
 │   └── styles/
 │       └── globals.css               # グローバルスタイル
 └── README.md
@@ -177,10 +178,16 @@ services/web-ui/
 - **表示名** (任意): デフォルト=ディレクトリ名
 - **説明** (任意): 用途・目的
 
-**バリデーション:**
-- 絶対パスチェック
-- 重複チェック（パス）
-- 空白文字トリム
+**バリデーション（Zod + React Hook Form）:**
+- ✅ 空文字チェック
+- ✅ 絶対パスチェック（`/`で始まる）
+- ✅ 相対パス禁止（`..`を含まない）
+- ✅ 末尾空白文字チェック
+- ✅ 表示名最大100文字
+- ✅ 説明最大500文字
+- ✅ リアルタイムバリデーション（入力中にエラー表示）
+
+**Note:** ディレクトリの実在確認はブラウザからは実施不可。host-agent側で自動確認されます。
 
 ### 3. ディレクトリ編集ダイアログ
 
@@ -296,7 +303,7 @@ export const useToggleDirectory = () => {
 
       queryClient.setQueryData<Directory[]>(['directories'], (old) =>
         old?.map((dir) =>
-          dir.id === id ? { ...dir, is_enabled: !dir.is_enabled } : dir
+          dir.id === id ? { ...dir, enabled: !dir.enabled } : dir  // is_enabled → enabled
         )
       );
 
@@ -322,6 +329,7 @@ export const useToggleDirectory = () => {
 ```typescript
 import axios from 'axios';
 
+// 環境変数からAPI URLを取得（デフォルトはlocalhost:8800）
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8800';
 
 export const apiClient = axios.create({
@@ -350,6 +358,20 @@ apiClient.interceptors.response.use(
   }
 );
 ```
+
+**環境変数設定:**
+
+プロジェクトルートの `env.example` から必要な設定をコピーして使用します。
+
+```bash
+# services/web-ui/.env
+# env.exampleの以下の設定を使用
+VITE_API_URL=http://localhost:${API_GATEWAY_PORT:-8800}
+```
+
+**注意:**
+- ローカル開発環境では `API_GATEWAY_PORT=8800` がデフォルト
+- すべての通信はローカルホスト内で完結するため、CORS設定は不要
 
 **api/directories.ts:**
 
@@ -388,34 +410,224 @@ export const toggleDirectory = async (id: number): Promise<Directory> => {
 };
 ```
 
+### バリデーション
+
+**ディレクトリパスの検証戦略（3層バリデーション）:**
+
+本プロジェクトでは、以下の3層でディレクトリパスを検証します：
+
+#### 1. フロントエンド（React Hook Form + Zod）
+
+**目的:** ユーザーに即座にフィードバック、基本的な形式チェック
+
+**実装場所:** `src/lib/validators.ts`
+
+```typescript
+import { z } from 'zod';
+
+export const directoryPathSchema = z
+  .string()
+  .min(1, 'ディレクトリパスを入力してください')
+  .refine(
+    (path) => path.startsWith('/'),
+    '絶対パスで入力してください（/で始まる必要があります）'
+  )
+  .refine(
+    (path) => !path.includes('..'),
+    '相対パス表記（..）は使用できません'
+  )
+  .refine(
+    (path) => !/\s+$/.test(path),
+    'パスの末尾に空白文字を含めることはできません'
+  );
+
+export const directoryFormSchema = z.object({
+  directory_path: directoryPathSchema,
+  display_name: z.string().max(100, '表示名は100文字以内で入力してください').optional(),
+  description: z.string().max(500, '説明は500文字以内で入力してください').optional(),
+});
+
+export type DirectoryFormData = z.infer<typeof directoryFormSchema>;
+```
+
+**チェック内容:**
+- ✅ 空文字チェック
+- ✅ 絶対パスチェック（`/` で始まる）
+- ✅ 相対パス禁止（`..` を含まない）
+- ✅ 末尾空白文字チェック
+
+**制限事項:**
+- ❌ ブラウザからローカルファイルシステムにアクセスできないため、実在確認は不可能
+
+#### 2. バックエンド（FastAPI Pydantic）
+
+**目的:** セキュリティ、API単体での正しい動作保証
+
+**実装場所:** `services/api-gateway/app/models/monitored_directory.py` （既存実装）
+
+```python
+@field_validator("directory_path")
+@classmethod
+def validate_directory_path(cls, v: str) -> str:
+    """ディレクトリパスのバリデーション"""
+    if not v:
+        raise ValueError("ディレクトリパスは必須です")
+
+    # 絶対パスチェック
+    if not os.path.isabs(v):
+        raise ValueError("絶対パスで指定してください")
+
+    # パス正規化
+    normalized = os.path.normpath(v)
+
+    return normalized
+```
+
+**チェック内容:**
+- ✅ 空文字チェック
+- ✅ 絶対パスチェック（`os.path.isabs`）
+- ✅ パス正規化（`//`, `./` などを整理）
+- ✅ 重複チェック（PostgreSQL UNIQUE制約）
+
+**制限事項:**
+- ❌ API Gatewayコンテナ内のファイルシステムとhost-agentのファイルシステムが異なるため、実在確認は実施しない
+
+#### 3. host-agent（config_sync）
+
+**目的:** 実際のファイルシステムでの実在確認
+
+**実装場所:** `host-agent/common/config_sync.py` の `get_monitored_directories()` メソッド
+
+```python
+async def get_monitored_directories(self) -> List[MonitoredDirectory]:
+    """有効な監視対象ディレクトリをPostgreSQLから取得"""
+    if not self._is_connected or not self._pool:
+        raise Exception("PostgreSQLに接続されていません")
+
+    try:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT id, directory_path, enabled, display_name, description
+                FROM monitored_directories
+                WHERE enabled = true
+                ORDER BY id
+                """
+            )
+
+            directories = []
+            for row in rows:
+                dir_path = row["directory_path"]
+
+                # 実在確認（host-agent側で実施）
+                if not os.path.exists(dir_path):
+                    logger.warning(f"ディレクトリが存在しません（スキップ）: {dir_path}")
+                    continue
+
+                if not os.path.isdir(dir_path):
+                    logger.warning(f"パスがディレクトリではありません（スキップ）: {dir_path}")
+                    continue
+
+                directories.append(
+                    MonitoredDirectory(
+                        id=row["id"],
+                        directory_path=dir_path,
+                        enabled=row["enabled"],
+                        display_name=row["display_name"],
+                        description=row["description"],
+                    )
+                )
+
+            logger.debug(f"PostgreSQLから{len(directories)}件の有効なディレクトリを取得")
+            return directories
+
+    except Exception as e:
+        logger.error(f"ディレクトリ取得エラー: {e}")
+        raise
+```
+
+**チェック内容:**
+- ✅ ディレクトリの実在確認（`os.path.exists`）
+- ✅ ディレクトリ種別確認（`os.path.isdir`）
+- ✅ 存在しないディレクトリは自動的に監視対象から除外
+- ✅ 警告ログ記録
+
+**UX設計:**
+
+```
+ユーザー入力
+  ↓
+[フロントエンド] 形式チェック → エラー: 即座に表示（赤文字、ツールチップ）
+  ↓
+[バックエンド] 形式チェック・重複チェック → エラー: API エラーレスポンス（トースト通知）
+  ↓
+登録成功（PostgreSQL保存）
+  ↓
+[host-agent] 実在確認（60秒以内） → 存在しない場合: 警告ログ、監視スキップ
+  ↓
+監視開始（存在するディレクトリのみ）
+```
+
+---
+
 ### 型定義
 
 **types/directory.ts:**
 
+**重要:** 型定義はバックエンドAPI (`services/api-gateway/app/models/monitored_directory.py`) のレスポンスと完全に一致させる必要があります。
+
 ```typescript
+/**
+ * 監視対象ディレクトリ（APIレスポンス型）
+ *
+ * バックエンドのMonitoredDirectoryモデルに対応
+ */
 export interface Directory {
   id: number;
-  path: string;
+  directory_path: string;          // バックエンドと一致（path ではない）
+  enabled: boolean;                // バックエンドと一致（is_enabled ではない）
   display_name: string | null;
   description: string | null;
-  is_enabled: boolean;
-  created_at: string;
-  updated_at: string;
+  created_at: string;              // ISO 8601形式の日時文字列
+  updated_at: string;              // ISO 8601形式の日時文字列
+  created_by: string;
+  updated_by: string;
 }
 
+/**
+ * 監視対象ディレクトリ作成用（POST /api/v1/directories/）
+ *
+ * バックエンドのMonitoredDirectoryCreateモデルに対応
+ */
 export interface DirectoryCreate {
-  path: string;
-  display_name?: string;
-  description?: string;
+  directory_path: string;          // 必須: 絶対パス
+  enabled?: boolean;               // オプション: デフォルトtrue
+  display_name?: string;           // オプション: 表示名（最大100文字）
+  description?: string;            // オプション: 説明（最大500文字）
+  created_by?: string;             // オプション: デフォルト"api"
 }
 
+/**
+ * 監視対象ディレクトリ更新用（PUT /api/v1/directories/{id}）
+ *
+ * バックエンドのMonitoredDirectoryUpdateモデルに対応
+ * すべてのフィールドがオプション（部分更新対応）
+ */
 export interface DirectoryUpdate {
-  path?: string;
-  display_name?: string;
-  description?: string;
-  is_enabled?: boolean;
+  directory_path?: string;         // オプション: 絶対パス
+  enabled?: boolean;               // オプション: 有効/無効
+  display_name?: string;           // オプション: 表示名（最大100文字）
+  description?: string;            // オプション: 説明（最大500文字）
+  updated_by?: string;             // オプション: デフォルト"api"
 }
 ```
+
+**型定義の整合性チェックリスト:**
+
+- ✅ `directory_path`: バックエンドと一致（`path`ではない）
+- ✅ `enabled`: バックエンドと一致（`is_enabled`ではない）
+- ✅ `created_by`, `updated_by`: バックエンドに存在
+- ✅ ISO 8601形式の日時文字列（`created_at`, `updated_at`）
 
 ---
 
@@ -492,9 +704,9 @@ services:
     container_name: reprospective-web
     restart: unless-stopped
     environment:
-      # 開発時はViteのAPIプロキシを使用
-      # 本番時はNginxのプロキシを使用（/api/でルーティング）
-      VITE_API_URL: http://localhost:${API_GATEWAY_PORT:-8800}
+      # API GatewayのURL（コンテナ間通信）
+      # Nginxプロキシ経由でapi-gatewayコンテナにアクセス
+      VITE_API_URL: http://api-gateway:8000
     ports:
       - "${WEB_UI_PORT:-3000}:80"
     depends_on:
@@ -508,6 +720,11 @@ services:
       timeout: 10s
       retries: 3
 ```
+
+**環境変数:**
+- `WEB_UI_PORT`: プロジェクトルートの `.env` で設定（`env.example` から作成）
+- `API_GATEWAY_PORT`: 同じく `.env` で設定（デフォルト8800）
+- すべてローカル環境で完結するため、外部接続やCORS設定は不要
 
 ---
 
@@ -523,7 +740,12 @@ services:
    npm install
    ```
 
-2. **依存パッケージインストール**
+2. **React 19.2.0にアップグレード（実験的使用）**
+   ```bash
+   npm install react@19.2.0 react-dom@19.2.0
+   ```
+
+3. **依存パッケージインストール**
    ```bash
    npm install @tanstack/react-query axios
    npm install react-hook-form zod @hookform/resolvers
@@ -532,23 +754,92 @@ services:
    npx tailwindcss init -p
    ```
 
-3. **Shadcn/ui セットアップ**
+4. **TypeScript パスエイリアス設定**
+
+   `tsconfig.json` に以下を追加:
+   ```json
+   {
+     "compilerOptions": {
+       "baseUrl": ".",
+       "paths": {
+         "@/*": ["./src/*"]
+       }
+     }
+   }
+   ```
+
+   `vite.config.ts` に以下を追加:
+   ```typescript
+   import { defineConfig } from 'vite'
+   import react from '@vitejs/plugin-react'
+   import path from 'path'
+
+   export default defineConfig({
+     plugins: [react()],
+     resolve: {
+       alias: {
+         '@': path.resolve(__dirname, './src'),
+       },
+     },
+   })
+   ```
+
+   **パスエイリアスの説明:**
+   - `@/` を `src/` のエイリアスとして設定
+   - インポート時に `import { Button } from '@/components/ui/button'` のように記述可能
+   - 相対パス `../../components/ui/button` を避けられ、可読性向上
+   - TypeScriptとViteの両方で設定が必要
+
+5. **Shadcn/ui セットアップ**
    ```bash
    npx shadcn-ui@latest init
+   ```
+
+   対話的な設定で以下を選択:
+   - Style: `default`
+   - Base color: `slate`
+   - CSS variables: `yes`
+   - TypeScript: `yes`
+   - React Server Components: `no`
+   - Tailwind config: `tailwind.config.js`
+   - Components: `src/components`
+   - Utils: `src/lib/utils`
+   - React Query: `yes`
+
+   ```bash
    npx shadcn-ui@latest add button card dialog form input label switch toast
    ```
 
-4. **ディレクトリ構成作成**
+6. **ディレクトリ構成作成**
    ```bash
    mkdir -p src/{api,components/{ui,layout,directories,common},hooks,types,lib,styles}
    ```
 
+7. **環境変数設定**
+   ```bash
+   # プロジェクトルートのenv.exampleを参照してservices/web-ui/.envを作成
+   cat > .env << 'EOF'
+   # API Gateway URL（ローカル開発環境）
+   VITE_API_URL=http://localhost:8800
+   EOF
+   ```
+
 ### ステップ2: API連携実装
 
-1. **API client 設定** (`api/client.ts`)
-2. **ディレクトリAPI実装** (`api/directories.ts`)
-3. **型定義** (`types/directory.ts`)
-4. **カスタムフック実装** (`hooks/use*.ts`)
+1. **バリデーション実装** (`lib/validators.ts`)
+   - Zodスキーマ定義
+   - ディレクトリパス検証ロジック
+2. **型定義** (`types/directory.ts`)
+   - APIレスポンス型定義
+   - バックエンドとの整合性確認
+3. **API client 設定** (`api/client.ts`)
+   - Axios設定
+   - エラーインターセプター
+4. **ディレクトリAPI実装** (`api/directories.ts`)
+   - CRUD操作関数
+5. **カスタムフック実装** (`hooks/use*.ts`)
+   - React Query統合
+   - 楽観的更新
 
 ### ステップ3: コンポーネント実装
 
@@ -556,7 +847,12 @@ services:
 2. **ディレクトリカード** (`DirectoryCard.tsx`)
 3. **ディレクトリ一覧** (`DirectoryList.tsx`)
 4. **追加ダイアログ** (`AddDirectoryDialog.tsx`)
+   - React Hook Formとの統合
+   - Zodバリデーション適用
+   - リアルタイムエラー表示
 5. **編集ダイアログ** (`EditDirectoryDialog.tsx`)
+   - 既存値のプリセット
+   - バリデーション適用
 6. **削除確認ダイアログ** (`DeleteDirectoryDialog.tsx`)
 7. **共通コンポーネント** (`LoadingSpinner.tsx`, `ErrorMessage.tsx`)
 
@@ -607,10 +903,15 @@ services:
 - [ ] Web UIが http://localhost:3000 でアクセス可能
 - [ ] ディレクトリ一覧がAPI経由で表示される
 - [ ] 新規ディレクトリ追加が正常に動作
+- [ ] **バリデーションが正常に動作**
+  - [ ] フロントエンドで絶対パスチェック（即座にエラー表示）
+  - [ ] 相対パス（`..`）入力時にエラー表示
+  - [ ] 空文字入力時にエラー表示
+  - [ ] 文字数制限（表示名100文字、説明500文字）
 - [ ] ディレクトリ編集が正常に動作
 - [ ] ON/OFF切り替えが即座に反映される
 - [ ] ディレクトリ削除が正常に動作
-- [ ] エラー時に適切なメッセージが表示される
+- [ ] エラー時に適切なメッセージが表示される（日本語）
 - [ ] 30秒ごとに自動更新される
 - [ ] レスポンシブデザインが動作する
 - [ ] Dockerコンテナとして起動できる
@@ -622,9 +923,9 @@ services:
 
 ### セキュリティ
 
-- **CORS設定**: API Gateway側で許可オリジン設定
-- **入力サニタイゼーション**: パス検証、XSS対策
-- **CSP (Content Security Policy)**: 適切なヘッダー設定
+- **ローカル環境**: すべての通信はlocalhost内で完結するため、CORS設定は不要
+- **入力サニタイゼーション**: パス検証、XSS対策（React/TypeScriptの標準機能で対応）
+- **CSP (Content Security Policy)**: 将来的に本番環境構築時に検討
 
 ### パフォーマンス
 
