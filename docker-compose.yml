@@ -74,9 +74,8 @@ services:
     container_name: reprospective-web
     restart: unless-stopped
 
-    environment:
-      # API Gateway URL（コンテナ内からはサービス名でアクセス）
-      VITE_API_URL: http://api-gateway:8000
+    # 環境変数はservices/web-ui/.envで管理
+    # ブラウザからアクセスするため、VITE_API_URLはlocalhost:8800を使用
 
     ports:
       # ホスト:コンテナ（Vite dev serverは5173ポート）

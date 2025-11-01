@@ -39,9 +39,9 @@ Dockerコンテナとして動作するマイクロサービス：
 
 - **database** ✅: PostgreSQL 16（実装完了）
 - **api-gateway** ✅: FastAPI RESTful API（実装完了）
+- **web-ui** ✅: React 19 + Vite Webフロントエンド（監視ディレクトリ設定）（実装完了）
 - **collector-service** 📋: GitHub/SNS等のAPI経由データ収集（計画中）
 - **ai-analyzer** 📋: AI分析エンジン（要約、分類、進捗推測）（計画中）
-- **web-ui** 📋: Webフロントエンド（レビュー、計画、可視化）（計画中）
 
 ### 共有ライブラリ (`shared/`)
 
@@ -174,6 +174,28 @@ python collectors/filesystem_watcher.py
 # v2: PostgreSQL連携版（推奨）
 python collectors/filesystem_watcher_v2.py
 ```
+
+### Web UI（監視ディレクトリ設定）
+
+ブラウザから監視対象ディレクトリを管理できます：
+
+```bash
+# 全サービスを起動
+./scripts/start.sh
+
+# ブラウザでアクセス
+# http://localhost:3333
+```
+
+**機能:**
+- ディレクトリ一覧表示
+- 新規ディレクトリ追加（バリデーション付き）
+- ディレクトリ編集
+- ON/OFF切り替え（楽観的更新）
+- ディレクトリ削除
+
+**動作確認手順:**
+詳細は `docs/manual/humantest.md` を参照してください。
 
 ### API経由での監視ディレクトリ管理
 

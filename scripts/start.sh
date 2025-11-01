@@ -38,11 +38,11 @@ fi
 
 # コンテナの起動
 echo "🚀 Docker Composeでコンテナを起動します..."
-docker compose up -d database
+docker compose up -d
 
 # コンテナの起動を待機
-echo "⏳ PostgreSQLの起動を待機中..."
-sleep 3
+echo "⏳ サービスの起動を待機中..."
+sleep 5
 
 # ヘルスチェック
 MAX_RETRIES=30
@@ -88,13 +88,14 @@ echo "📊 コンテナステータス:"
 docker compose ps
 echo ""
 echo "💡 接続情報:"
-echo "   Host: localhost"
-echo "   Port: 5432"
-echo "   Database: reprospective"
-echo "   User: reprospective_user"
+echo "   Web UI:        http://localhost:3333"
+echo "   API Gateway:   http://localhost:8800"
+echo "   Swagger UI:    http://localhost:8800/docs"
+echo "   PostgreSQL:    localhost:6000"
 echo ""
 echo "🔧 便利なコマンド:"
-echo "   docker compose logs database       # ログ表示"
-echo "   docker compose exec database psql -U reprospective_user -d reprospective  # psql接続"
-echo "   ./scripts/stop.sh                  # コンテナ停止"
+echo "   docker compose logs web-ui         # Web UIログ表示"
+echo "   docker compose logs api-gateway    # API Gatewayログ表示"
+echo "   docker compose logs database       # データベースログ表示"
+echo "   ./scripts/stop.sh                  # 全コンテナ停止"
 echo ""

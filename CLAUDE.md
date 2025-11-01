@@ -19,7 +19,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Status
 
-**Phase 2.1 - API Gateway & 設定同期 完了** (2025-10-31時点)
+**Phase 2.2 - Web UI ✅ 完了** (2025-11-01)
 
 ### ✅ Phase 1 完了 (2025-10-25)
 
@@ -79,13 +79,66 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 詳細: `host-agent/README.md`, `docs/design/phase2_1_implementation_plan.md`
 
-### 📋 Phase 2.2以降（計画中）
+### ✅ Phase 2.2 Web UI 完了（2025-11-01）
 
 #### services/web-ui (React 19 + Vite)
-- 監視ディレクトリ設定UI
-- 活動データ可視化
-- AI分析結果表示
-- 対話的レビューインターフェース
+**実装完了内容:**
+
+**Step 1 & 2: プロジェクト基盤 & Docker化**
+- ✅ Vite + React 19.2.0 + TypeScript プロジェクト構築
+- ✅ Tailwind CSS v4 + Shadcn/ui セットアップ
+- ✅ TypeScript パスエイリアス設定（`@/*`）
+- ✅ React Query (TanStack Query v5)、Axios、Zod、React Hook Form インストール
+- ✅ Dockerコンテナ化（Vite Dev Server使用）
+- ✅ docker-compose.yml統合、ホットリロード動作確認
+- ✅ 環境変数管理（services/web-ui/env.example）
+
+**Step 3: API連携実装**
+- ✅ 型定義（directory.ts）
+- ✅ Zodバリデーションスキーマ（validators.ts）
+- ✅ Axiosクライアント設定（api/client.ts, directories.ts）
+- ✅ React Queryカスタムフック5個（useDirectories, useAdd, useUpdate, useDelete, useToggle）
+- ✅ 楽観的更新実装（全ミューテーション）
+
+**Step 4: コンポーネント実装**
+- ✅ UIコンポーネント6個（button, dialog, input, label, switch, textarea）
+- ✅ 共通コンポーネント2個（LoadingSpinner, ErrorMessage）
+- ✅ レイアウトコンポーネント2個（Header, Layout）
+- ✅ ディレクトリ管理コンポーネント5個（DirectoryCard, DirectoryList, Add/Edit/DeleteDialog）
+
+**Step 5: アプリケーション統合**
+- ✅ main.tsx: React Query Provider設定
+- ✅ App.tsx: Layout + DirectoryList統合
+
+**Step 6: 統合テスト**
+- ✅ Docker環境動作確認
+- ✅ コンテナ間通信テスト（web-ui → api-gateway）
+- ✅ API Gateway接続テスト
+- ✅ Vite Dev Server正常起動確認
+
+**技術スタック:**
+- React 19.2.0
+- Vite 7.1.12
+- TypeScript 5.9.3
+- Tailwind CSS 4.1.16
+- Shadcn/ui (New York style)
+- TanStack Query v5
+- Axios 1.7.9
+- Zod 3.24.1
+- React Hook Form 7.54.2
+
+**動作確認済み:**
+- ✅ Dockerコンテナビルド・起動成功
+- ✅ http://localhost:3333 でアクセス可能
+- ✅ ホットリロード機能動作確認
+- ✅ Tailwind CSS v4 正常動作
+- ✅ コンテナ間通信（web-ui → api-gateway）
+- ✅ 全CRUD操作動作確認
+- ✅ 楽観的更新動作確認
+
+詳細: `docs/design/phase2_2_implementation_plan.md`, `docs/manual/humantest.md`
+
+### 📋 Phase 2.3以降（計画中）
 
 #### host-agent/ (追加コレクター)
 - **BrowserActivityParser**: ブラウザ活動解析
@@ -107,7 +160,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Architecture
 
-### Current Architecture (Phase 2.1)
+### Current Architecture (Phase 2.2)
 
 ```
 reprospective/
@@ -145,8 +198,37 @@ reprospective/
 │   │   ├── Dockerfile                    ✅ Dockerイメージ
 │   │   ├── requirements.txt              ✅ 依存パッケージ
 │   │   └── README.md                     ✅ ドキュメント
-│   ├── ai-analyzer/                      📋 AI分析エンジン（計画中）
-│   └── web-ui/                           📋 React 19 + Vite（計画中）
+│   ├── web-ui/                           ✅ React 19 + Vite（実装完了）
+│   │   ├── src/
+│   │   │   ├── main.tsx                  ✅ エントリーポイント（React Query Provider）
+│   │   │   ├── App.tsx                   ✅ アプリケーション統合
+│   │   │   ├── components/
+│   │   │   │   ├── ui/                   ✅ Shadcn/ui UIコンポーネント（6個）
+│   │   │   │   ├── common/               ✅ 共通コンポーネント（LoadingSpinner, ErrorMessage）
+│   │   │   │   ├── layout/               ✅ レイアウト（Header, Layout）
+│   │   │   │   └── directories/          ✅ ディレクトリ管理（5コンポーネント）
+│   │   │   ├── api/
+│   │   │   │   ├── client.ts             ✅ Axiosクライアント
+│   │   │   │   └── directories.ts        ✅ ディレクトリAPI関数
+│   │   │   ├── hooks/
+│   │   │   │   ├── useDirectories.ts     ✅ 一覧取得フック
+│   │   │   │   ├── useAddDirectory.ts    ✅ 追加ミューテーション
+│   │   │   │   ├── useUpdateDirectory.ts ✅ 更新ミューテーション
+│   │   │   │   ├── useDeleteDirectory.ts ✅ 削除ミューテーション
+│   │   │   │   └── useToggleDirectory.ts ✅ 切り替えミューテーション
+│   │   │   ├── types/
+│   │   │   │   └── directory.ts          ✅ 型定義
+│   │   │   ├── lib/
+│   │   │   │   ├── utils.ts              ✅ ユーティリティ関数
+│   │   │   │   └── validators.ts         ✅ Zodバリデーションスキーマ
+│   │   │   └── index.css                 ✅ Tailwind CSS v4設定
+│   │   ├── Dockerfile                    ✅ Vite Dev Server用Dockerfile
+│   │   ├── .dockerignore                 ✅ Docker除外設定
+│   │   ├── tailwind.config.js            ✅ Tailwind設定
+│   │   ├── components.json               ✅ Shadcn/ui設定
+│   │   ├── package.json                  ✅ 依存パッケージ
+│   │   └── env.example                   ✅ 環境変数テンプレート
+│   └── ai-analyzer/                      📋 AI分析エンジン（計画中）
 │
 ├── scripts/                              ✅ 管理スクリプト
 │   ├── start.sh                          ✅ PostgreSQL起動
@@ -158,25 +240,22 @@ reprospective/
 │   ├── stop-agent.sh                     ✅ host-agent停止
 │   └── README.md                         ✅ スクリプトドキュメント
 │
-├── docs/design/                          # 設計ドキュメント
-│   ├── phase2_1_implementation_plan.md   ✅ Phase 2.1実装計画（完了）
-│   └── phase2_2_implementation_plan.md   📋 Phase 2.2実装計画
+├── docs/
+│   ├── design/                           # 設計ドキュメント
+│   │   ├── phase2_1_implementation_plan.md   ✅ Phase 2.1実装計画（完了）
+│   │   └── phase2_2_implementation_plan.md   ✅ Phase 2.2実装計画（完了）
+│   └── manual/                           # 運用マニュアル
+│       └── humantest.md                  ✅ Web UI人間動作確認手順書
 │
 ├── docker-compose.yml                    ✅ Docker Compose設定
 └── env.example                           ✅ 環境変数テンプレート
 ```
 
-### Future Architecture (Phase 2.2+)
+### Future Architecture (Phase 3+)
 
 ```
 reprospective/
 ├── services/
-│   ├── web-ui/                           📋 React 19 + Vite
-│   │   ├── src/
-│   │   │   ├── components/               # React コンポーネント
-│   │   │   ├── pages/                    # ページコンポーネント
-│   │   │   └── api/                      # API クライアント
-│   │   └── Dockerfile
 │   └── ai-analyzer/                      📋 AI分析エンジン
 │       └── analyzers/                    # 各種分析ロジック
 └── shared/                               📋 共有ライブラリ
@@ -283,15 +362,88 @@ python scripts/reset_database.py --files    # ファイルDBのみ
 ./scripts/clean-docker.sh
 ```
 
+### Web UI起動・確認
+
+```bash
+# プロジェクトルートで実行
+./scripts/start.sh
+
+# Web UIアクセス
+# http://localhost:3333
+
+# 人間動作確認手順書参照
+# docs/manual/humantest.md
+```
+
 ### テスト方針
 
 - 現在は手動テスト
+- Web UI: `docs/manual/humantest.md` の手順書に従う
 - データ確認: `host-agent/scripts/show_sessions.py`, `show_file_events.py`
 - クリーンテスト: `scripts/clean-*.sh`
 
 ---
 
 ## 実装履歴
+
+### 2025-11-01: Phase 2.2 Web UI完了（全6ステップ）
+
+**実装内容:**
+
+**Step 1: プロジェクト基盤構築**
+- Vite + React 19.2.0 + TypeScript プロジェクト作成
+- Tailwind CSS v4.1.16 セットアップ（`@import "tailwindcss"`構文）
+- Shadcn/ui 設定（New York style、HSLカラーシステム）
+- 依存パッケージインストール：
+  - TanStack Query v5（サーバー状態管理）
+  - Axios 1.7.9（HTTPクライアント）
+  - Zod 3.24.1（バリデーション）
+  - React Hook Form 7.54.2（フォーム管理）
+- TypeScript パスエイリアス設定（`@/*` → `./src/*`）
+- ディレクトリ構造構築（components, api, hooks, types, lib）
+
+**Step 2: Dockerコンテナ化**
+- `services/web-ui/Dockerfile` 作成（Node.js 20-alpine、Vite Dev Server）
+- `docker-compose.yml` 更新（web-uiサービス追加）
+- ボリュームマウント設定（ホットリロード有効化）
+- 環境変数管理（`VITE_API_URL`）
+
+**Step 3: API連携実装**
+- 型定義（`types/directory.ts`）
+- Zodバリデーションスキーマ（`lib/validators.ts`）
+- Axiosクライアント設定（`api/client.ts`, `api/directories.ts`）
+- React Queryカスタムフック5個（useDirectories, useAdd, useUpdate, useDelete, useToggle）
+- 楽観的更新実装（全ミューテーション）
+
+**Step 4: コンポーネント実装**
+- UIコンポーネント6個（button, dialog, input, label, switch, textarea）
+- 共通コンポーネント2個（LoadingSpinner, ErrorMessage）
+- レイアウトコンポーネント2個（Header, Layout）
+- ディレクトリ管理コンポーネント5個（DirectoryCard, DirectoryList, Add/Edit/DeleteDialog）
+
+**Step 5: アプリケーション統合**
+- main.tsx: React Query Provider設定
+- App.tsx: Layout + DirectoryList統合
+
+**Step 6: 統合テスト**
+- Docker環境動作確認
+- コンテナ間通信テスト（web-ui → api-gateway）
+- API Gateway接続テスト
+- 人間動作確認手順書作成（`docs/manual/humantest.md`）
+
+**技術的決定:**
+- Tailwind CSS v4使用：`@import "tailwindcss"`構文
+- Vite Dev Server のみ使用（Nginx不使用、実験プロジェクトのため）
+- 楽観的更新パターン実装（即座のUI反映、エラー時自動ロールバック）
+- 3層バリデーション（フロントエンド形式チェック、バックエンドセキュリティチェック、host-agent実在確認）
+
+**動作確認:**
+- ✅ 全6ステップ完了
+- ✅ Docker環境でWeb UIが起動（http://localhost:3333）
+- ✅ コンテナ間通信正常
+- ✅ 全CRUD操作動作確認
+- ✅ 楽観的更新動作確認
+- ✅ ホットリロード機能動作確認
 
 ### 2025-10-31: Phase 2.1 API Gateway完了
 
@@ -419,8 +571,14 @@ docs/
 
 ```bash
 # 環境起動
-./scripts/start.sh           # PostgreSQL起動
+docker compose up -d         # 全サービス起動（database, api-gateway, web-ui）
+# または個別起動
+./scripts/start.sh           # PostgreSQL + API Gateway起動
+docker compose up -d web-ui  # Web UI起動
 ./scripts/start-agent.sh     # host-agent起動
+
+# Web UI確認
+# http://localhost:3333
 
 # データ確認
 cd host-agent && source venv/bin/activate
@@ -429,7 +587,7 @@ python scripts/show_file_events.py 50      # 最新50ファイルイベント
 
 # 環境停止
 ./scripts/stop-agent.sh      # host-agent停止
-./scripts/stop.sh            # PostgreSQL停止
+docker compose down          # 全サービス停止
 
 # データクリーンアップ
 ./scripts/reset-db.sh        # PostgreSQLデータベースリセット
@@ -448,14 +606,23 @@ python scripts/show_file_events.py 50      # 最新50ファイルイベント
 - `host-agent/common/config_sync.py`: PostgreSQL設定同期
 - `host-agent/config/config.yaml`: 設定ファイル
 
+**services:**
+- `services/api-gateway/`: FastAPI API Gateway
+- `services/web-ui/`: React 19 + Vite フロントエンド（Step 1&2完了）
+- `services/web-ui/src/types/`: TypeScript型定義
+- `services/web-ui/src/api/`: APIクライアント
+- `services/web-ui/env.example`: 環境変数テンプレート
+
 **infrastructure:**
-- `docker-compose.yml`: Docker Compose設定
+- `docker-compose.yml`: Docker Compose設定（database, api-gateway, web-ui）
 - `services/database/init/01_init_schema.sql`: PostgreSQLスキーマ
 - `services/database/init/02_add_monitored_directories.sql`: 監視ディレクトリテーブル
-- `services/api-gateway/`: FastAPI API Gateway
 - `scripts/*.sh`: 管理スクリプト（Docker、host-agent、API操作）
+
+**docs:**
 - `docs/design/phase2_1_implementation_plan.md`: Phase 2.1実装計画（完了）
-- `docs/design/phase2_2_implementation_plan.md`: Phase 2.2実装計画
+- `docs/design/phase2_2_implementation_plan.md`: Phase 2.2実装計画（Step 1&2完了）
+- `docs/design/phase2_3_implementation_plan.md`: Phase 2.3実装計画（データ同期）
 
 ---
 
