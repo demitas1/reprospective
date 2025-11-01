@@ -386,7 +386,42 @@ python scripts/reset_database.py --files    # ファイルDBのみ
 
 ## 実装履歴
 
-### 2025-11-01: Phase 2.2 Web UI完了（全6ステップ）
+### 2025-11-01: Phase 2.2 Web UI完了 + 人間動作確認・修正完了
+
+**人間動作確認結果:**
+- ✅ 基本機能テスト完了（ディレクトリ追加、編集、削除、ON/OFF切り替え）
+- ✅ UIデザイン改善実施
+- ✅ 環境変数修正（docker-compose.yml）
+- ✅ スクリプト修正（scripts/start.sh）
+
+**修正内容:**
+
+1. **環境変数の修正:**
+   - 問題: docker-compose.ymlで`VITE_API_URL: http://api-gateway:8000`とハードコードされており、ブラウザからアクセス不可
+   - 解決: docker-compose.ymlの環境変数上書きを削除、services/web-ui/.env（`http://localhost:8800`）を使用
+
+2. **scripts/start.sh の修正:**
+   - 問題: `docker compose up -d database`でdatabaseのみ起動
+   - 解決: `docker compose up -d`に変更し、全サービス（database, api-gateway, web-ui）を起動
+   - 接続情報表示を追加（Web UI, API Gateway, Swagger UI, PostgreSQL）
+
+3. **UIデザイン改善:**
+   - DirectoryCard: パディング増加（p-4→p-6）、ボタンサイズ拡大（h-4→h-5）
+   - ボーダー: インラインスタイルで明示的に指定（Tailwind CSS v4のカスタムカラー問題を回避）
+   - 背景色: 有効時は白、無効時はグレー
+   - 影効果: カードに立体感を追加
+   - DirectoryList: カード間の余白増加（gap-4→gap-6）
+
+**動作確認済み:**
+- ✅ http://localhost:3333 でWeb UIアクセス可能
+- ✅ ディレクトリ一覧表示
+- ✅ ディレクトリ追加（バリデーション動作）
+- ✅ ディレクトリ編集
+- ✅ ON/OFF切り替え（楽観的更新）
+- ✅ ディレクトリ削除
+- ✅ UIデザイン：ボーダー、影、ホバー効果すべて正常表示
+
+### 2025-11-01: Phase 2.2 Web UI実装（全6ステップ）
 
 **実装内容:**
 

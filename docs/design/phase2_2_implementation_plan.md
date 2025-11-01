@@ -1,8 +1,10 @@
 # Phase 2.2 実装計画: Web UI
 
-**ステータス: ✅ 完了**
+**ステータス: ✅ 完了（人間動作確認済み）**
 
 **更新日:** 2025-11-01
+
+**人間動作確認:** 2025-11-01 完了
 
 **前提条件:** Phase 2.1 (API Gateway & host-agent設定同期) 完了 ✅
 
@@ -1429,15 +1431,127 @@ docker compose logs web-ui
 
 ---
 
+## 人間動作確認結果（2025-11-01）
+
+### 実施内容
+
+**手順書:** `docs/manual/humantest.md` に従って基本機能テストを実施
+
+**確認項目:**
+- ✅ Web UIアクセス（http://localhost:3333）
+- ✅ ディレクトリ一覧表示
+- ✅ ディレクトリ追加（バリデーション動作）
+- ✅ ディレクトリ編集
+- ✅ ON/OFF切り替え（楽観的更新）
+- ✅ ディレクトリ削除
+
+### 発見した問題と修正
+
+#### 1. 環境変数の問題
+
+**問題:**
+- docker-compose.ymlで`VITE_API_URL: http://api-gateway:8000`とハードコード
+- ブラウザからDocker内部のホスト名にアクセスできず、Network Errorが発生
+
+**修正:**
+```yaml
+# Before (docker-compose.yml)
+environment:
+  VITE_API_URL: http://api-gateway:8000
+
+# After (docker-compose.yml)
+# 環境変数はservices/web-ui/.envで管理
+# ブラウザからアクセスするため、VITE_API_URLはlocalhost:8800を使用
+```
+
+**services/web-ui/.env:**
+```
+VITE_API_URL=http://localhost:8800
+```
+
+#### 2. scripts/start.sh の問題
+
+**問題:**
+- `docker compose up -d database`でdatabaseコンテナのみ起動
+- web-uiとapi-gatewayが起動しない
+
+**修正:**
+```bash
+# Before
+docker compose up -d database
+
+# After
+docker compose up -d
+```
+
+接続情報表示も追加:
+```
+💡 接続情報:
+   Web UI:        http://localhost:3333
+   API Gateway:   http://localhost:8800
+   Swagger UI:    http://localhost:8800/docs
+   PostgreSQL:    localhost:6000
+```
+
+#### 3. UIデザインの問題
+
+**問題:**
+- カードのボーダーが表示されない
+- ボタンが小さく押しにくい
+- カード間の余白が少なく見づらい
+
+**原因:**
+Tailwind CSS v4のカスタムカラー設定により、デフォルトの色クラス（`blue-200`、`gray-300`など）が機能しない
+
+**修正:**
+
+**DirectoryCard.tsx:**
+```tsx
+// ボーダーをインラインスタイルで明示的に指定
+<div
+  className={cn(
+    'rounded-lg p-6 shadow-md hover:shadow-lg transition-all',
+    directory.enabled ? 'bg-white' : 'bg-gray-50 opacity-60'
+  )}
+  style={{
+    border: directory.enabled ? '2px solid #BFDBFE' : '2px solid #D1D5DB'
+  }}
+>
+
+// ボタンサイズとパディング拡大
+<button className="p-3 ...">  {/* p-2 → p-3 */}
+  <Edit className="h-5 w-5" />  {/* h-4 w-4 → h-5 w-5 */}
+</button>
+```
+
+**DirectoryList.tsx:**
+```tsx
+// カード間の余白増加
+<div className="grid gap-6">  {/* gap-4 → gap-6 */}
+```
+
+### 最終確認結果
+
+**すべての基本機能が正常に動作:**
+- ✅ http://localhost:3333 でWeb UIアクセス可能
+- ✅ API Gateway連携正常（http://localhost:8800）
+- ✅ ディレクトリ追加・編集・削除・ON/OFF切り替えすべて動作
+- ✅ バリデーション動作（絶対パスチェック、文字数制限）
+- ✅ 楽観的更新（即座のUI反映、エラー時自動ロールバック）
+- ✅ UIデザイン：ボーダー、影、ホバー効果すべて正常表示
+
+**Phase 2.2 Web UI完了 🎉**
+
+---
+
 ## 次のステップ
 
-Phase 2.2実装開始後、以下の順で進めます：
+**Phase 2.2完了により、以下が利用可能:**
+- ✅ ブラウザベースの監視ディレクトリ設定UI
+- ✅ リアルタイム更新
+- ✅ 楽観的更新によるスムーズなUX
 
-1. Vite + React 19プロジェクト作成
-2. 依存パッケージインストール
-3. API連携実装
-4. コンポーネント実装
-5. Docker化
-6. 統合テスト
-
-各ステップ完了後、動作確認とドキュメント更新を行います。
+**Phase 3候補:**
+1. 活動データ可視化（セッション、ファイル変更のグラフ表示）
+2. AI分析エンジン（活動データの要約・分類）
+3. 追加コレクター（BrowserActivityParser、GitHubMonitor、SNSMonitor）
