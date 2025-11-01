@@ -49,8 +49,9 @@ Phase 2.2では、監視ディレクトリ設定のためのWebフロントエ�
 - **フォーム管理**: React Hook Form + Zod
 
 **インフラ:**
-- **Webサーバー**: Nginx（本番）/ Vite Dev Server（開発）
-- **コンテナ化**: Docker（マルチステージビルド）
+- **Webサーバー**: Vite Dev Server（開発・本番共通）
+  - **注意:** 実験プロジェクトのため、Nginxは使用せず簡素化
+- **コンテナ化**: Docker
 - **オーケストレーション**: Docker Compose
 
 ### システム構成
@@ -58,7 +59,7 @@ Phase 2.2では、監視ディレクトリ設定のためのWebフロントエ�
 ```
 ┌──────────────┐      HTTP      ┌──────────────┐
 │   Browser    │ ─────────────> │   Web UI     │
-│              │                 │ (React/Nginx)│
+│              │                 │ (React/Vite) │
 └──────────────┘                 └──────┬───────┘
                                         │
                                         │ REST API
@@ -730,7 +731,25 @@ services:
 
 ## 実装手順
 
-### ステップ1: プロジェクト基盤構築
+**⚠️ 実装順序変更（2025-11-01）:**
+コンテナ化を優先し、Docker環境でフロントエンド開発を行う方針に変更しました。
+
+**変更理由:**
+- すべてのサービスをDocker Composeで統一管理
+- 環境構築の再現性向上
+- 本番環境との差異を最小化
+
+**新しい実装順序:**
+1. ステップ1: プロジェクト基盤構築（✅ 完了）
+2. **ステップ2: Docker化（優先実装）** ← 変更
+3. ステップ3: API連携実装
+4. ステップ4: コンポーネント実装
+5. ステップ5: アプリケーション統合
+6. ステップ6: 統合テスト
+
+---
+
+### ステップ1: プロジェクト基盤構築（✅ 完了）
 
 1. **Vite + React 19プロジェクト作成**
    ```bash
@@ -824,7 +843,115 @@ services:
    EOF
    ```
 
-### ステップ2: API連携実装
+### ステップ2: Docker化（優先実装）
+
+**目的:** フロントエンドをコンテナ化し、Docker Composeで統一管理
+
+**方針:** 実験プロジェクトのため、開発・本番ともにVite Dev Serverを使用し、実装を簡素化
+
+#### 2-1. Dockerfile作成
+
+**services/web-ui/Dockerfile:**
+
+```dockerfile
+FROM node:20-alpine
+
+WORKDIR /app
+
+# 依存関係をコピー
+COPY package.json package-lock.json ./
+
+# 依存関係インストール
+RUN npm ci
+
+# ソースコードをコピー
+COPY . .
+
+# 開発サーバーポート
+EXPOSE 5173
+
+# Vite開発サーバー起動（ホットリロード有効）
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+```
+
+**説明:**
+- `--host 0.0.0.0`: コンテナ外からアクセス可能にする
+- ホットリロード: ボリュームマウントで有効化
+- 開発・本番環境で同一構成（実験プロジェクトのため）
+
+**注意:** 本プロジェクトはローカル完結・単一ユーザーの実験プロジェクトのため、Vite Dev Serverのみで十分です。将来的に外部公開する場合はNginxへの移行を検討してください。
+
+#### 2-2. docker-compose.yml更新
+
+プロジェクトルートの`docker-compose.yml`にweb-uiサービスを追加:
+
+```yaml
+services:
+  # ... 既存のdatabase, api-gatewayサービス ...
+
+  # Web UI (Vite Dev Server)
+  web-ui:
+    build: ./services/web-ui
+    container_name: reprospective-web
+    restart: unless-stopped
+    environment:
+      # コンテナ間通信用API URL
+      VITE_API_URL: http://api-gateway:8000
+    ports:
+      - "${WEB_UI_PORT:-3000}:5173"
+    volumes:
+      # ホットリロード用（ソースコードをマウント）
+      - ./services/web-ui:/app
+      - /app/node_modules  # node_modulesはコンテナ内のものを使用
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    networks:
+      - reprospective-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5173/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+```
+
+**ポイント:**
+- ボリュームマウントでホットリロード有効
+- `node_modules`はコンテナ内のものを使用（ホストOSとの差異回避）
+- API Gateway待機（`depends_on` + `condition: service_healthy`）
+
+#### 2-3. .dockerignoreファイル作成
+
+**services/web-ui/.dockerignore:**
+
+```
+node_modules
+dist
+.env
+.env.local
+npm-debug.log
+.DS_Store
+```
+
+#### 2-4. 動作確認
+
+```bash
+# プロジェクトルートで実行
+docker compose build web-ui
+docker compose up web-ui
+
+# ブラウザでアクセス
+# http://localhost:3000 (WEB_UI_PORTが3000の場合)
+# または http://localhost:3333 (env.exampleのデフォルト)
+
+# ホットリロード確認
+# services/web-ui/src/App.tsx を編集して保存
+# → ブラウザが自動リロードされることを確認
+```
+
+---
+
+### ステップ3: API連携実装
 
 1. **バリデーション実装** (`lib/validators.ts`)
    - Zodスキーマ定義
@@ -841,7 +968,7 @@ services:
    - React Query統合
    - 楽観的更新
 
-### ステップ3: コンポーネント実装
+### ステップ4: コンポーネント実装
 
 1. **基本レイアウト** (`Layout.tsx`, `Header.tsx`)
 2. **ディレクトリカード** (`DirectoryCard.tsx`)
@@ -856,51 +983,42 @@ services:
 6. **削除確認ダイアログ** (`DeleteDirectoryDialog.tsx`)
 7. **共通コンポーネント** (`LoadingSpinner.tsx`, `ErrorMessage.tsx`)
 
-### ステップ4: アプリケーション統合
+### ステップ5: アプリケーション統合
 
 1. **App.tsx 実装** - メインコンポーネント
 2. **main.tsx 設定** - React Query Provider
-3. **グローバルスタイル** - Tailwind CSS設定
-4. **環境変数設定** - `.env` ファイル
-
-### ステップ5: Docker化
-
-1. **Dockerfile作成** - マルチステージビルド
-2. **nginx.conf作成** - SPA対応設定
-3. **docker-compose.yml更新** - web-uiサービス追加
-4. **ビルド確認**
-   ```bash
-   docker compose build web-ui
-   docker compose up web-ui
-   ```
+3. **グローバルスタイル** - Tailwind CSS設定（✅ 完了）
+4. **環境変数設定** - `.env` ファイル（✅ 完了）
 
 ### ステップ6: 統合テスト
 
-1. **ローカル起動テスト**
+1. **Docker統合テスト**
    ```bash
-   # 開発サーバー
-   cd services/web-ui
-   npm run dev
-   ```
-
-2. **Docker統合テスト**
-   ```bash
+   # プロジェクトルートで実行
    docker compose up -d
    # http://localhost:3000 でアクセス確認
    ```
 
-3. **機能テスト**
+2. **機能テスト**
    - ディレクトリ一覧表示
    - ディレクトリ追加
    - ON/OFF切り替え
    - 編集・削除
    - エラーハンドリング
+   - ホットリロード動作確認
+
+3. **コンテナ間通信テスト**
+   - web-ui → api-gateway 接続確認
+   - APIエラーハンドリング確認
 
 ---
 
 ## 完了条件
 
-- [ ] Web UIが http://localhost:3000 でアクセス可能
+- [ ] **Docker環境でWeb UIが起動**
+  - [ ] `docker compose up web-ui` で起動可能
+  - [ ] http://localhost:3000 でアクセス可能
+  - [ ] ホットリロードが動作（ファイル変更がリアルタイム反映）
 - [ ] ディレクトリ一覧がAPI経由で表示される
 - [ ] 新規ディレクトリ追加が正常に動作
 - [ ] **バリデーションが正常に動作**

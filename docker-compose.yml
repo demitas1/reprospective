@@ -68,6 +68,33 @@ services:
       retries: 5
       start_period: 10s
 
+  # Web UI (React + Vite)
+  web-ui:
+    build: ./services/web-ui
+    container_name: reprospective-web
+    restart: unless-stopped
+
+    environment:
+      # API Gateway URL（コンテナ内からはサービス名でアクセス）
+      VITE_API_URL: http://api-gateway:8000
+
+    ports:
+      # ホスト:コンテナ（Vite dev serverは5173ポート）
+      - "${WEB_UI_PORT:-3000}:5173"
+
+    volumes:
+      # ソースコードをマウントしてホットリロードを有効化
+      - ./services/web-ui:/app
+      # node_modulesはコンテナ内のものを使用（ホストと混在させない）
+      - /app/node_modules
+
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+
+    networks:
+      - reprospective-network
+
 # 永続化ボリューム
 volumes:
   postgres_data:
