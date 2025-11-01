@@ -74,10 +74,38 @@ host-agentのローカルSQLiteデータベースを削除します。
 
 **⚠️ 警告:** ローカルの全活動データが削除されます
 
+### データ表示スクリプト
+
+#### show-directories.sh
+PostgreSQLデータベースから監視対象ディレクトリの一覧を表示します。
+
+```bash
+./scripts/show-directories.sh
+```
+
+**機能:**
+- PostgreSQLから直接データ取得
+- 日本語カラム名で見やすく表示
+- 統計情報表示（合計、有効、無効の件数）
+- 有効/無効状態を絵文字で表示
+
+**出力例:**
+```
+ ID |       ディレクトリパス        |  状態   |     表示名
+----+-------------------------------+---------+-----------------
+  5 | /home/demitas/work/github.com | ✅ 有効 | work/github.com
+  7 | /home/demitas/work/rakugaki   | ✅ 有効 | rakugaki
+
+統計情報
+合計: 2件
+有効: 2件
+無効: 0件
+```
+
 ### API管理スクリプト
 
 #### api-list-directories.sh
-監視対象ディレクトリの一覧を取得・表示します。
+API経由で監視対象ディレクトリの一覧を取得・表示します。
 
 ```bash
 ./scripts/api-list-directories.sh           # 全ディレクトリ取得
