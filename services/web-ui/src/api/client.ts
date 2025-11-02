@@ -3,6 +3,7 @@
  */
 
 import axios from 'axios';
+import { logError } from '@/utils/errorLogger';
 
 /**
  * API Gateway のベースURL
@@ -56,8 +57,17 @@ apiClient.interceptors.response.use(
   },
   (error) => {
     // エラーログ記録
+    const additionalInfo: Record<string, unknown> = {
+      url: error.config?.url,
+      method: error.config?.method,
+    };
+
     if (error.response) {
       // サーバーがエラーレスポンスを返した場合
+      additionalInfo.status = error.response.status;
+      additionalInfo.statusText = error.response.statusText;
+      additionalInfo.data = error.response.data;
+
       console.error('API Error:', {
         status: error.response.status,
         data: error.response.data,
@@ -65,11 +75,16 @@ apiClient.interceptors.response.use(
       });
     } else if (error.request) {
       // リクエストは送信されたがレスポンスがない場合
+      additionalInfo.errorType = 'network';
       console.error('Network Error:', error.message);
     } else {
       // リクエスト設定中にエラーが発生した場合
+      additionalInfo.errorType = 'request_config';
       console.error('Request Error:', error.message);
     }
+
+    // エラーロガーに送信
+    logError(error, 'axios', additionalInfo);
 
     return Promise.reject(error);
   }

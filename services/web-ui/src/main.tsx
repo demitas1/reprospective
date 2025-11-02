@@ -10,6 +10,8 @@ import { createRoot } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import './index.css';
 import App from './App.tsx';
+import { logError } from '@/utils/errorLogger';
+import { ErrorBoundary } from '@/components/common/ErrorBoundary';
 
 // React Query クライアントを作成
 const queryClient = new QueryClient({
@@ -29,10 +31,32 @@ const queryClient = new QueryClient({
   },
 });
 
+// グローバルエラーハンドラー
+window.addEventListener('error', (event) => {
+  logError(event.error || event.message, 'global', {
+    filename: event.filename,
+    lineno: event.lineno,
+    colno: event.colno,
+  });
+});
+
+// Promise拒否ハンドラー
+window.addEventListener('unhandledrejection', (event) => {
+  logError(
+    event.reason instanceof Error ? event.reason : String(event.reason),
+    'unhandledRejection',
+    {
+      promise: event.promise.toString(),
+    }
+  );
+});
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <App />
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
+    </ErrorBoundary>
   </StrictMode>
 );

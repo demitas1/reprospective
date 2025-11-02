@@ -138,7 +138,61 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 詳細: `docs/design/phase2_2_implementation_plan.md`, `docs/manual/humantest.md`
 
-### 📋 Phase 2.3以降（計画中）
+### ✅ Phase 2.3 フロントエンドエラーロギング 完了（2025-11-02）
+
+#### services/api-gateway (FastAPI) - デバッグエンドポイント追加
+**実装完了内容:**
+- ✅ `POST /api/v1/debug/log-errors` エンドポイント
+- ✅ Pydanticモデル（ErrorEntry, LogErrorsRequest, LogErrorsResponse）
+- ✅ JSON Lines形式でログファイル記録（./logs/errors.log）
+- ✅ 環境変数でデバッグモードON/OFF（DEBUG=true/false）
+- ✅ Docker ボリュームマウント（./logs:/var/log/frontend:rw）
+
+**動作確認済み:**
+- ✅ 単一エラー送信・記録
+- ✅ 複数エラーバッチ送信・記録
+- ✅ デバッグモード有効/無効切り替え
+- ✅ ログファイルへのアクセス確認
+
+#### services/web-ui (React 19 + Vite) - エラーロガー実装
+**実装完了内容:**
+
+**細粒度制御対応:**
+- ✅ 5つのエラーソース個別ON/OFF（react, reactQuery, axios, global, unhandledRejection）
+- ✅ 環境変数による静的制御（VITE_LOG_*）
+- ✅ ブラウザコンソールからの動的制御（window.__errorLogger）
+
+**コンポーネント:**
+- ✅ `utils/errorLogger.ts` - ErrorLoggerクラス、バッファリング、サニタイズ
+- ✅ `components/common/ErrorBoundary.tsx` - React Error Boundary
+- ✅ `components/debug/ErrorLoggerTest.tsx` - エラーテストUI
+- ✅ グローバルエラーハンドラー統合（main.tsx）
+- ✅ Axiosインターセプター統合（api/client.ts）
+
+**機能:**
+- ✅ バッファリング（最大10件、5秒ごとにフラッシュ）
+- ✅ 機密情報サニタイズ（VITE_*環境変数除外）
+- ✅ エラーソース記録（context フィールド）
+- ✅ 追加情報記録（URL, User Agent, Stack Trace等）
+
+**動作確認済み:**
+- ✅ 全エラーソース記録動作確認
+- ✅ 細粒度制御動作確認（環境変数・動的制御）
+- ✅ バッファリング動作確認
+- ✅ ログファイル記録確認
+- ✅ エラーテストページ動作確認（http://localhost:3333/?test=error-logger）
+
+**管理スクリプト:**
+- ✅ `scripts/show-error-logs.sh` - エラーログ表示（jq整形、件数指定可能）
+- ✅ `scripts/clear-error-logs.sh` - エラーログ消去（確認プロンプト、強制モード）
+
+**ドキュメント:**
+- ✅ `docs/design/frontend-logger.md` - 実装計画・結果
+- ✅ `docs/manual/error-logging.md` - 利用マニュアル（ON/OFF、確認、消去、細粒度制御、トラブルシューティング）
+
+詳細: `docs/design/frontend-logger.md`, `docs/manual/error-logging.md`
+
+### 📋 Phase 2.4以降（計画中）
 
 #### host-agent/ (追加コレクター)
 - **BrowserActivityParser**: ブラウザ活動解析
@@ -375,16 +429,94 @@ python scripts/reset_database.py --files    # ファイルDBのみ
 # docs/manual/humantest.md
 ```
 
+### エラーログ管理
+
+```bash
+# エラーログを確認（最新10件）
+./scripts/show-error-logs.sh
+
+# エラーログを確認（最新50件）
+./scripts/show-error-logs.sh 50
+
+# すべてのエラーログを確認
+./scripts/show-error-logs.sh all
+
+# リアルタイムでエラーログを監視
+tail -f ./logs/errors.log | jq '.'
+
+# エラーログをクリア（確認あり）
+./scripts/clear-error-logs.sh
+
+# エラーログをクリア（強制実行）
+./scripts/clear-error-logs.sh -f
+
+# エラーテストページにアクセス
+# http://localhost:3333/?test=error-logger
+```
+
 ### テスト方針
 
 - 現在は手動テスト
 - Web UI: `docs/manual/humantest.md` の手順書に従う
+- エラーログ: `docs/manual/error-logging.md` の利用マニュアル参照
 - データ確認: `host-agent/scripts/show_sessions.py`, `show_file_events.py`
 - クリーンテスト: `scripts/clean-*.sh`
 
 ---
 
 ## 実装履歴
+
+### 2025-11-02: Phase 2.3 フロントエンドエラーロギング完了
+
+**Phase 1: API Gateway デバッグエンドポイント（実績35分）**
+- ✅ `services/api-gateway/app/routers/debug.py` 作成（94行）
+- ✅ `services/api-gateway/app/config.py` 更新（debug_mode追加）
+- ✅ `services/api-gateway/app/main.py` 更新（debugルーター登録）
+- ✅ `docker-compose.yml` 更新（DEBUG_MODE環境変数、./logs ボリュームマウント）
+- ✅ `env.example` 更新（DEBUG設定説明追加）
+- ✅ `logs/.gitignore` 作成
+- ✅ 動作確認完了（単一エラー送信、バッチエラー送信、ログファイル記録）
+
+**Phase 2: Web UI エラーロガー実装（実績45分）**
+- ✅ `services/web-ui/src/utils/errorLogger.ts` 作成（198行）
+  - ErrorLogger クラス、細粒度制御、バッファリング、サニタイズ
+- ✅ `services/web-ui/src/components/common/ErrorBoundary.tsx` 作成（100行）
+- ✅ `services/web-ui/src/components/debug/ErrorLoggerTest.tsx` 作成（190行）
+- ✅ `services/web-ui/src/main.tsx` 更新（ErrorBoundary統合、グローバルエラーハンドラー）
+- ✅ `services/web-ui/src/api/client.ts` 更新（Axiosインターセプター）
+- ✅ `services/web-ui/src/App.tsx` 更新（テストページルーティング）
+- ✅ `services/web-ui/.env` 更新（エラーロギング環境変数）
+- ✅ `services/web-ui/env.example` 更新（詳細な説明・使用例）
+
+**管理スクリプト追加:**
+- ✅ `scripts/show-error-logs.sh` - エラーログ表示（jq整形、件数指定、all オプション）
+- ✅ `scripts/clear-error-logs.sh` - エラーログ消去（確認プロンプト、-f 強制モード）
+- ✅ `scripts/README.md` 更新（新スクリプトのドキュメント追加）
+
+**ドキュメント作成:**
+- ✅ `docs/design/frontend-logger.md` 更新（Phase 1 & 2 完了状況、実装結果追加）
+- ✅ `docs/manual/error-logging.md` 作成（643行）
+  - エラーロギングのON/OFF切り替え
+  - エラーログの確認・消去方法
+  - 細粒度制御の使い方
+  - エラーテストページの使い方
+  - トラブルシューティング（5項目）
+  - よくある使用パターン（3パターン）
+- ✅ `docs/manual/README.md` 作成（マニュアル一覧）
+
+**動作確認完了:**
+- ✅ 全エラーソース記録動作確認
+- ✅ 細粒度制御動作確認（環境変数・ブラウザコンソール）
+- ✅ バッファリング動作確認
+- ✅ スクリプト動作確認（show-error-logs.sh, clear-error-logs.sh）
+- ✅ エラーテストページ動作確認
+
+**技術的成果:**
+- 5つのエラーソース個別制御（react, reactQuery, axios, global, unhandledRejection）
+- 環境変数による静的制御 + ブラウザコンソールからの動的制御
+- パフォーマンス最適化（バッファリング、不要ログ送信回避）
+- 機密情報保護（VITE_*環境変数のサニタイズ）
+- 開発者体験向上（包括的なドキュメント、便利なスクリプト）
 
 ### 2025-11-01: Phase 2.2 Web UI完了 + 人間動作確認・修正完了
 

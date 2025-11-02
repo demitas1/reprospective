@@ -102,6 +102,74 @@ PostgreSQLデータベースから監視対象ディレクトリの一覧を表�
 無効: 0件
 ```
 
+#### show-error-logs.sh
+フロントエンドエラーログを表示します。
+
+```bash
+./scripts/show-error-logs.sh [件数]
+```
+
+**オプション:**
+- `件数`: 表示する最新エラーの件数（デフォルト: 10件）
+- `all`: すべてのエラーログを表示
+
+**例:**
+```bash
+./scripts/show-error-logs.sh       # 最新10件を表示
+./scripts/show-error-logs.sh 20    # 最新20件を表示
+./scripts/show-error-logs.sh all   # 全件を表示
+```
+
+**機能:**
+- 総エラー件数を表示
+- jqで整形表示（カラー対応）
+- ログファイルが空の場合は使用方法を案内
+- リアルタイム監視コマンドも案内
+
+**出力例:**
+```
+総エラー件数: 15 件
+
+最新 10 件のエラーログを表示:
+
+{
+  "timestamp": "2025-11-02T12:00:00Z",
+  "message": "Uncaught TypeError: Cannot read property 'foo' of undefined",
+  "stack": "Error: ...",
+  "context": "axios",
+  "user_agent": "Mozilla/5.0 ...",
+  "url": "http://localhost:3333/",
+  "additional_info": {
+    "status": 404,
+    "method": "GET"
+  }
+}
+```
+
+#### clear-error-logs.sh
+フロントエンドエラーログを全消去します。
+
+```bash
+./scripts/clear-error-logs.sh [-f|--force]
+```
+
+**オプション:**
+- `-f` または `--force`: 確認なしで強制実行
+
+**例:**
+```bash
+./scripts/clear-error-logs.sh       # 確認プロンプトあり
+./scripts/clear-error-logs.sh -f    # 強制実行
+```
+
+**機能:**
+- 現在のエラー件数を表示
+- 最新5件のプレビュー表示
+- 確認プロンプト（強制モードでない場合）
+- 削除後の確認メッセージ
+
+**⚠️ 警告:** この操作は元に戻せません
+
 ### API管理スクリプト
 
 #### api-list-directories.sh
@@ -331,6 +399,34 @@ source venv/bin/activate
 python scripts/show_sessions.py
 python scripts/show_file_events.py
 ```
+
+### フロントエンドエラーログ管理
+
+Web UIで発生したエラーを確認・管理する場合：
+
+```bash
+# エラーログを確認（最新10件）
+./scripts/show-error-logs.sh
+
+# エラーログを確認（最新50件）
+./scripts/show-error-logs.sh 50
+
+# すべてのエラーログを確認
+./scripts/show-error-logs.sh all
+
+# リアルタイムでエラーログを監視
+tail -f ./logs/errors.log | jq '.'
+
+# エラーログをクリア（確認あり）
+./scripts/clear-error-logs.sh
+
+# エラーログをクリア（強制実行）
+./scripts/clear-error-logs.sh -f
+```
+
+**エラーテストページ:**
+- http://localhost:3333/?test=error-logger にアクセス
+- 各種エラーをテストできるUIが表示されます
 
 ### データベースのみリセット
 
