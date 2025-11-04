@@ -64,6 +64,7 @@ class DesktopActivityDatabase:
                     application_name TEXT NOT NULL,
                     window_title TEXT NOT NULL,
                     duration_seconds INTEGER,
+                    synced_at INTEGER,
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL
                 )
@@ -80,12 +81,55 @@ class DesktopActivityDatabase:
                 ON desktop_activity_sessions(application_name)
             """)
 
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_synced_at
+                ON desktop_activity_sessions(synced_at)
+            """)
+
             self.connection.commit()
             self.logger.info("データベーステーブルを作成しました")
+
+            # マイグレーション実行
+            self._migrate_add_synced_at_column()
 
         except Exception as e:
             self.logger.error(f"テーブル作成エラー: {e}")
             raise
+
+    def _migrate_add_synced_at_column(self):
+        """
+        既存テーブルにsynced_atカラムを追加するマイグレーション
+
+        既にカラムが存在する場合はスキップする
+        """
+        try:
+            cursor = self.connection.cursor()
+
+            # カラムの存在を確認
+            cursor.execute("PRAGMA table_info(desktop_activity_sessions)")
+            columns = [row[1] for row in cursor.fetchall()]
+
+            if 'synced_at' not in columns:
+                self.logger.info("synced_atカラムを追加しています...")
+                cursor.execute("""
+                    ALTER TABLE desktop_activity_sessions
+                    ADD COLUMN synced_at INTEGER
+                """)
+
+                # インデックスを作成
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_synced_at
+                    ON desktop_activity_sessions(synced_at)
+                """)
+
+                self.connection.commit()
+                self.logger.info("synced_atカラムを追加しました")
+            else:
+                self.logger.debug("synced_atカラムは既に存在します")
+
+        except Exception as e:
+            self.logger.error(f"マイグレーションエラー: {e}")
+            # マイグレーションエラーは致命的ではないため、継続
 
     def save_session(self, session: ActivitySession) -> int:
         """
@@ -335,6 +379,7 @@ class FileChangeDatabase:
                     is_symlink INTEGER DEFAULT 0,
                     monitored_root TEXT NOT NULL,
                     project_name TEXT,
+                    synced_at INTEGER,
                     created_at INTEGER NOT NULL
                 )
             """)
@@ -355,12 +400,55 @@ class FileChangeDatabase:
                 ON file_change_events(file_extension)
             """)
 
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_file_synced_at
+                ON file_change_events(synced_at)
+            """)
+
             self.connection.commit()
             self.logger.info("データベーステーブルを作成しました")
+
+            # マイグレーション実行
+            self._migrate_add_synced_at_column()
 
         except Exception as e:
             self.logger.error(f"テーブル作成エラー: {e}")
             raise
+
+    def _migrate_add_synced_at_column(self):
+        """
+        既存テーブルにsynced_atカラムを追加するマイグレーション
+
+        既にカラムが存在する場合はスキップする
+        """
+        try:
+            cursor = self.connection.cursor()
+
+            # カラムの存在を確認
+            cursor.execute("PRAGMA table_info(file_change_events)")
+            columns = [row[1] for row in cursor.fetchall()]
+
+            if 'synced_at' not in columns:
+                self.logger.info("synced_atカラムを追加しています...")
+                cursor.execute("""
+                    ALTER TABLE file_change_events
+                    ADD COLUMN synced_at INTEGER
+                """)
+
+                # インデックスを作成
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_file_synced_at
+                    ON file_change_events(synced_at)
+                """)
+
+                self.connection.commit()
+                self.logger.info("synced_atカラムを追加しました")
+            else:
+                self.logger.debug("synced_atカラムは既に存在します")
+
+        except Exception as e:
+            self.logger.error(f"マイグレーションエラー: {e}")
+            # マイグレーションエラーは致命的ではないため、継続
 
     def save_file_event(self, event_data: dict) -> int:
         """

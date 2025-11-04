@@ -45,14 +45,21 @@ echo "  - 既存テーブルを削除..."
 docker compose exec -T database psql -U reprospective_user -d reprospective << 'EOF' > /dev/null 2>&1
 DROP TABLE IF EXISTS desktop_activity_sessions CASCADE;
 DROP TABLE IF EXISTS file_change_events CASCADE;
+DROP TABLE IF EXISTS monitored_directories CASCADE;
+DROP TABLE IF EXISTS sync_logs CASCADE;
 DROP TABLE IF EXISTS schema_version CASCADE;
 DROP VIEW IF EXISTS daily_activity_summary CASCADE;
 DROP VIEW IF EXISTS daily_file_changes_summary CASCADE;
 EOF
 
-# スキーマを再初期化
+# スキーマを再初期化（全ての.sqlファイルを順番に実行）
 echo "  - スキーマを再初期化..."
-docker compose exec -T database psql -U reprospective_user -d reprospective < services/database/init/01_init_schema.sql > /dev/null
+for sql_file in services/database/init/*.sql; do
+    if [ -f "$sql_file" ]; then
+        echo "    - $(basename "$sql_file") を実行中..."
+        docker compose exec -T database psql -U reprospective_user -d reprospective < "$sql_file" > /dev/null
+    fi
+done
 
 # 確認
 TABLES=$(docker compose exec -T database psql -U reprospective_user -d reprospective -t -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE';" 2>/dev/null | tr -d ' ')

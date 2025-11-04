@@ -138,7 +138,34 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 詳細: `docs/design/phase2_2_implementation_plan.md`, `docs/manual/humantest.md`
 
-### ✅ Phase 2.3 フロントエンドエラーロギング 完了（2025-11-02）
+### ✅ Phase 2.3 データ同期機能 完了（2025-11-04）
+
+#### SQLite → PostgreSQL データ同期
+**実装完了内容:**
+- ✅ PostgreSQLスキーマ拡張（`sync_logs`テーブル作成）
+- ✅ SQLiteスキーママイグレーション（`synced_at`カラム追加）
+- ✅ `DataSyncManager`クラス実装（`host-agent/common/data_sync.py`）
+- ✅ バッチ同期機能（デフォルト100件ずつ、5分間隔）
+- ✅ 増分同期（未同期データのみ転送）
+- ✅ collector統合（linux_x11_monitor.pyにasyncio統合）
+- ✅ 管理スクリプト（`scripts/show-sync-stats.sh`）
+
+**動作確認済み:**
+- ✅ 12件のテストデータを正常に同期
+- ✅ PostgreSQLへのデータ挿入成功
+- ✅ `sync_logs`テーブルへの統計記録成功
+- ✅ ISO文字列→TIMESTAMP型変換正常動作
+- ✅ 同期統計表示スクリプト動作確認
+
+**技術的成果:**
+- SQLiteローカルDB → PostgreSQL中央DBへの自動同期
+- オフライン耐性（ネットワーク障害時もローカルに蓄積）
+- 同期状態管理（synced_atフラグ、sync_logsテーブル）
+- エラーリカバリ（トランザクション保証、バッチ単位コミット）
+
+詳細: `docs/design/phase2_3_implementation_plan.md`
+
+### ✅ Phase 2.3-extra フロントエンドエラーロギング 完了（2025-11-02）
 
 #### services/api-gateway (FastAPI) - デバッグエンドポイント追加
 **実装完了内容:**
@@ -192,7 +219,46 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 詳細: `docs/design/frontend-logger.md`, `docs/manual/error-logging.md`
 
-### 📋 Phase 2.4以降（計画中）
+### 📋 Phase 2.4 Web UI 活動データ可視化（計画中）
+
+#### 実装予定内容
+**API Gateway拡張:**
+- 活動データ取得APIエンドポイント（5個）
+  - `GET /api/v1/activities/sessions` - セッション一覧取得
+  - `GET /api/v1/activities/daily-summary` - 日別サマリー
+  - `GET /api/v1/activities/file-events` - ファイルイベント取得
+  - `GET /api/v1/activities/file-summary` - ファイルサマリー
+  - `GET /api/v1/activities/sync-status` - 同期ステータス
+
+**Web UI新規ページ:**
+- ダッシュボードページ（`/dashboard`）
+  - 時間別アクティビティグラフ（Recharts）
+  - 上位アプリケーションカード
+  - ファイル変更統計
+  - 同期ステータス表示
+- セッション一覧ページ（`/sessions`）
+  - フィルタ・検索機能
+  - ページネーション
+  - 詳細モーダル
+- ファイルイベントページ（`/file-events`）
+  - プロジェクト別フィルタ
+  - 拡張子別フィルタ
+  - イベントタイプ別表示
+- 同期ステータスページ（`/sync-status`）
+  - 最新同期状態
+  - 同期ログ履歴
+  - エラー通知
+
+**技術スタック:**
+- Recharts: グラフ描画
+- date-fns: 日付操作
+- React Day Picker: 日付選択
+
+**推定工数:** 20時間（3日間）
+
+詳細: `docs/design/phase2_4_implementation_plan.md`
+
+### 📋 Phase 2.5以降（将来実装）
 
 #### host-agent/ (追加コレクター)
 - **BrowserActivityParser**: ブラウザ活動解析
@@ -208,7 +274,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - データモデル定義
 - ユーティリティライブラリ
 
-詳細: `docs/software_idea-ai_assited_todo.md`, `docs/design/phase2_2_implementation_plan.md`
+詳細: `docs/software_idea-ai_assited_todo.md`
 
 ---
 
@@ -581,7 +647,80 @@ http://localhost:3333/?test=error-logger
 
 ## 実装履歴
 
-### 2025-11-02: Phase 2.3 フロントエンドエラーロギング完了
+### 2025-11-04: Phase 2.3 データ同期機能完了
+
+**SQLite → PostgreSQL データ同期（実績6時間）**
+
+**ステップ1: PostgreSQLスキーマ拡張（実績1時間）**
+- ✅ `services/database/init/03_add_sync_logs.sql` 作成
+- ✅ `sync_logs`テーブル作成（10カラム、4インデックス）
+- ✅ `scripts/reset-db.sh` 修正（全SQLファイル実行に改良）
+- ✅ テーブル作成確認（5テーブル合計）
+
+**ステップ2: SQLiteスキーママイグレーション（実績1時間）**
+- ✅ `DesktopActivityDatabase._migrate_add_synced_at_column()` 実装
+- ✅ `FileChangeDatabase._migrate_add_synced_at_column()` 実装
+- ✅ `synced_at`カラム追加（既存DBの自動アップグレード）
+- ✅ インデックス作成（`idx_synced_at`, `idx_file_synced_at`）
+
+**ステップ3: データ同期モジュール実装（実績2時間）**
+- ✅ `host-agent/common/data_sync.py` 作成（500行以上）
+- ✅ `DataSyncManager`クラス実装
+  - `initialize()`: PostgreSQL接続プール初期化
+  - `sync_all()`: 全テーブル同期
+  - `_sync_desktop_activity()`: デスクトップセッション同期
+  - `_sync_file_events()`: ファイルイベント同期
+  - `_get_unsynced_*_records()`: 未同期レコード取得
+  - `_update_*_synced_flags()`: synced_atフラグ更新
+  - `_log_sync_result()`: 同期統計記録
+  - `start_sync_loop()`: 定期同期ループ
+- ✅ ISO文字列→TIMESTAMP型変換実装
+- ✅ バッチ処理（デフォルト100件）
+- ✅ エラーハンドリング・リトライロジック
+
+**ステップ4: collector統合（実績1時間）**
+- ✅ `linux_x11_monitor.py` asyncio統合
+- ✅ `main_async()` 関数実装
+- ✅ `DataSyncManager` 統合
+- ✅ バックグラウンド同期ループ起動
+- ✅ `config.yaml` 拡張（data_sync設定追加）
+- ✅ PostgreSQL接続URL修正（ポート6000対応）
+
+**ステップ5: 管理スクリプト作成（実績30分）**
+- ✅ `scripts/show-sync-stats.sh` 作成
+- ✅ 最新10件の同期ログ表示
+- ✅ テーブル別同期サマリー
+- ✅ ホスト別同期統計
+- ✅ 実行権限付与
+
+**ステップ6: 統合テスト（実績30分）**
+- ✅ `host-agent/test_sync.py` 作成
+- ✅ 12件のテストデータ作成・同期成功
+- ✅ PostgreSQLデータ挿入確認
+- ✅ `sync_logs`テーブル記録確認
+- ✅ 同期統計スクリプト動作確認
+
+**技術的課題と解決:**
+1. **ISO文字列→TIMESTAMP型変換エラー**
+   - 問題: PostgreSQLが文字列をdatetime型として受け入れない
+   - 解決: `datetime.fromisoformat()`で明示的に変換
+2. **PostgreSQLポート設定**
+   - 問題: デフォルトポート5432が6000に変更されていた
+   - 解決: 接続URLを修正（localhost:6000）
+3. **パスワード認証エラー**
+   - 問題: `reprospective_password`が間違っていた
+   - 解決: Dockerコンテナから実際のパスワード取得（`change_this_password`）
+
+**動作確認結果:**
+- ✅ 12件のセッションを正常に同期
+- ✅ `records_synced=12, records_failed=0, status=success`
+- ✅ ホスト識別子: `demitas-ryzen_demitas`
+- ✅ 同期時刻: 2025-11-04 21:38:50
+
+**次のステップ:**
+Phase 2.4 - Web UI活動データ可視化（推定20時間）
+
+### 2025-11-02: Phase 2.3-extra フロントエンドエラーロギング完了
 
 **Phase 1: API Gateway デバッグエンドポイント（実績35分）**
 - ✅ `services/api-gateway/app/routers/debug.py` 作成（94行）

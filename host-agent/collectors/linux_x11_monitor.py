@@ -7,6 +7,7 @@ X11環境でのアクティブウィンドウ情報を取得し、活動セッ�
 import subprocess
 import time
 import logging
+import asyncio
 from typing import Optional, Tuple
 from pathlib import Path
 import sys
@@ -16,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from common.models import ActivitySession
 from common.database import DesktopActivityDatabase
+from common.data_sync import DataSyncManager
 
 
 class LinuxX11Monitor:
@@ -222,9 +224,9 @@ class LinuxX11Monitor:
         self.current_session_id = None
 
 
-def main():
+async def main_async():
     """
-    メイン関数（スタンドアローン実行用）
+    メイン関数（asyncio版）
     """
     import yaml
     from pathlib import Path
@@ -250,12 +252,44 @@ def main():
         config = yaml.safe_load(f)
 
     # データベースパスを解決（相対パスの場合は host-agent/ からの相対）
-    db_path = config['database']['desktop_activity']['path']
-    if not Path(db_path).is_absolute():
-        db_path = str(Path(__file__).parent.parent / db_path)
+    desktop_db_path = config['database']['desktop_activity']['path']
+    file_db_path = config['database']['file_changes']['path']
+
+    if not Path(desktop_db_path).is_absolute():
+        desktop_db_path = str(Path(__file__).parent.parent / desktop_db_path)
+    if not Path(file_db_path).is_absolute():
+        file_db_path = str(Path(__file__).parent.parent / file_db_path)
 
     # データベース初期化
-    database = DesktopActivityDatabase(db_path)
+    database = DesktopActivityDatabase(desktop_db_path)
+
+    # データ同期マネージャー初期化（有効な場合）
+    sync_manager = None
+    if config.get('data_sync', {}).get('enabled', False):
+        try:
+            postgres_url = config['database']['postgres_url']
+            sync_config = config['data_sync']
+
+            sync_manager = DataSyncManager(
+                postgres_url=postgres_url,
+                sqlite_desktop_db_path=desktop_db_path,
+                sqlite_file_events_db_path=file_db_path,
+                batch_size=sync_config.get('batch_size', 100),
+                sync_interval=sync_config.get('interval_seconds', 300),
+                max_retries=sync_config.get('max_retries', 5)
+            )
+
+            await sync_manager.initialize()
+            logger.info("データ同期マネージャーを初期化しました")
+
+            # 同期ループをバックグラウンドで開始
+            loop = asyncio.get_event_loop()
+            sync_manager.run_sync_loop_in_background(loop)
+            logger.info("バックグラウンド同期を開始しました")
+
+        except Exception as e:
+            logger.error(f"データ同期マネージャー初期化エラー: {e}")
+            logger.info("同期機能なしで続行します")
 
     # モニター起動
     monitor = LinuxX11Monitor(config, database)
@@ -266,6 +300,17 @@ def main():
         logger.error(f"エラーが発生しました: {e}", exc_info=True)
     finally:
         database.close()
+
+        # 同期マネージャーをクリーンアップ
+        if sync_manager:
+            await sync_manager.close()
+
+
+def main():
+    """
+    メイン関数（スタンドアローン実行用）
+    """
+    asyncio.run(main_async())
 
 
 if __name__ == "__main__":

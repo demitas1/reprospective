@@ -7,6 +7,15 @@ database:
     path: data/desktop_activity.db
   file_changes:
     path: data/file_changes.db
+  postgres_url: "postgresql://reprospective_user:change_this_password@localhost:6000/reprospective"
+
+# データ同期設定
+data_sync:
+  enabled: true                # 同期機能有効化
+  interval_seconds: 300        # 同期間隔（デフォルト5分）
+  batch_size: 100              # バッチサイズ
+  max_retries: 5               # 最大リトライ回数
+  retry_backoff_seconds: 30    # リトライ間隔（指数バックオフ）
 
 # デスクトップアクティビティ監視設定
 desktop_monitor:
