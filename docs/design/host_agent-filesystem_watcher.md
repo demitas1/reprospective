@@ -1,12 +1,17 @@
-# FileSystemWatcher 設計メモ
+# FileSystemWatcher 設計書
 
 ## 実装状況
 
 ✅ **Phase 1 実装完了** (2025-10-25)
+✅ **Phase 2.1 設定同期機能完了** (2025-10-31)
+✅ **Phase 2.3 データ同期機能完了** (2025-11-05)
 
 実装の詳細は以下を参照：
-- `host-agent/collectors/filesystem_watcher.py`
+- `host-agent/collectors/filesystem_watcher_v2.py` (PostgreSQL連携版)
+- `host-agent/collectors/filesystem_watcher.py` (v1、YAMLのみ)
 - `host-agent/common/database.py` (`FileChangeDatabase`クラス)
+- `host-agent/common/config_sync.py` (PostgreSQL設定同期)
+- `host-agent/common/data_sync.py` (SQLite → PostgreSQL同期)
 - `host-agent/README.md`
 
 ---
@@ -419,21 +424,129 @@ filesystem_watcher:
    - ディレクトリパスのバリデーション（危険なパスを拒否）
    - 監査ログ（誰がいつ設定を変更したか記録）
 
+---
+
+## Phase 2.1 設定同期機能（完了）
+
+### 概要
+
+PostgreSQL `monitored_directories`テーブルから監視対象ディレクトリを動的に取得し、再起動なしで監視対象を追加・削除できる機能。
+
+### 実装内容
+
+**PostgreSQLテーブル**:
+```sql
+CREATE TABLE monitored_directories (
+    id SERIAL PRIMARY KEY,
+    directory_path TEXT UNIQUE NOT NULL,
+    enabled BOOLEAN DEFAULT true,
+    display_name TEXT,
+    description TEXT,
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL
+);
+```
+
+**設定同期ロジック** (`config_sync.py`):
+- 60秒間隔でPostgreSQLから設定を取得
+- `enabled=true`のディレクトリのみ監視
+- ディレクトリ追加時: 自動的に監視開始
+- ディレクトリ無効化時: 自動的に監視停止
+- 初回起動時: YAML設定をPostgreSQLに自動移行
+- PostgreSQL接続失敗時: YAMLフォールバック
+
+**動作確認済み**:
+- [x] PostgreSQLからディレクトリ設定を自動取得
+- [x] ディレクトリ追加時の自動監視開始（60秒以内）
+- [x] ディレクトリ無効化時の自動監視停止（60秒以内）
+- [x] 初回起動時のYAML→PostgreSQL移行
+- [x] PostgreSQL接続失敗時のYAMLフォールバック
+
+### API統合
+
+**FastAPI RESTful API** (`services/api-gateway`):
+- `GET /api/v1/monitored-directories`: 一覧取得
+- `POST /api/v1/monitored-directories`: 追加
+- `PUT /api/v1/monitored-directories/{id}`: 更新
+- `PATCH /api/v1/monitored-directories/{id}/toggle`: ON/OFF切り替え
+- `DELETE /api/v1/monitored-directories/{id}`: 削除
+
+**Web UI** (`services/web-ui`):
+- React 19 + Vite + TypeScript
+- ディレクトリ管理画面（追加、編集、削除、ON/OFF切り替え）
+- 楽観的更新実装
+
+---
+
+## Phase 2.3 データ同期機能（完了）
+
+### 概要
+
+SQLiteローカルDBからPostgreSQL中央DBへファイル変更イベントをバッチ同期する機能。
+
+### 実装内容
+
+**SQLiteスキーマ更新**:
+```sql
+ALTER TABLE file_change_events ADD COLUMN synced_at INTEGER;
+CREATE INDEX idx_file_synced_at ON file_change_events(synced_at);
+```
+
+**PostgreSQLテーブル**:
+```sql
+CREATE TABLE file_change_events (
+    id SERIAL PRIMARY KEY,
+    event_time BIGINT NOT NULL,
+    event_time_iso TIMESTAMP NOT NULL,
+    event_type TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    file_path_relative TEXT,
+    file_name TEXT NOT NULL,
+    file_extension TEXT,
+    file_size INTEGER,
+    is_symlink BOOLEAN DEFAULT false,
+    monitored_root TEXT NOT NULL,
+    project_name TEXT,
+    created_at BIGINT NOT NULL,
+    host_identifier TEXT NOT NULL,
+    synced_from_local_id INTEGER
+);
+
+CREATE INDEX idx_file_event_time ON file_change_events(event_time);
+```
+
+**同期ロジック** (`data_sync.py`):
+- 5分間隔でバッチ同期（デフォルト100件ずつ）
+- 未同期イベントのみ転送（`WHERE synced_at IS NULL`）
+- データ型変換: `event_time`をUNIXタイムスタンプ整数として保存
+- boolean型変換: `is_symlink`をboolean型に変換
+- 同期統計を`sync_logs`テーブルに記録
+
+**動作確認済み**:
+- [x] ファイルイベント同期成功
+- [x] データ型整合性確保（UNIXタイムスタンプ、boolean）
+- [x] 同期ログ記録
+- [x] エラーリカバリ（トランザクション保証）
+
+---
+
 ## 将来的な拡張
 
-### Phase 2
-- **Webフロントエンドからの設定**: 監視対象ディレクトリをUI上で追加・削除・ON/OFF
-- **設定DB統合**: PostgreSQLに設定を保存（ディレクトリごとに1レコード）
-- **動的な設定反映**: 再起動なしで監視対象を追加・削除
+### Phase 2（一部完了）
+- ✅ Webフロントエンドからの設定（完了）
+- ✅ 設定DB統合（完了）
+- ✅ 動的な設定反映（完了）
+- ✅ PostgreSQLへのデータ同期（完了）
 
-### Phase 3
-- **ディレクトリごとの詳細設定**: 個別の除外パターン、バッファサイズなど
-- **ファイル差分解析**: Git diffを利用した変更内容の解析
-- **複数ホストの統合管理**: 複数PCの監視設定を一元管理
+### Phase 3（未実装）
+- 📋 ディレクトリごとの詳細設定（個別の除外パターン、バッファサイズなど）
+- 📋 ファイル差分解析（Git diffを利用した変更内容の解析）
+- 📋 複数ホストの統合管理（複数PCの監視設定を一元管理）
+- 📋 Web UI活動データ可視化（ファイルイベント一覧、グラフ表示）
 
 ## テスト確認項目
 
-### Phase 1
+### Phase 1（完了）
 - [x] ファイル作成イベントの検出
 - [x] ファイル更新イベントの検出
 - [x] ファイル削除イベントの検出
@@ -445,17 +558,30 @@ filesystem_watcher:
 - [ ] 監視対象がシンボリックリンクの場合、実体が監視される（要テスト）
 - [ ] ファイルタイプの分類（実装済みだが分類ロジックは未実装）
 
-### Phase 2
-- [ ] データベースから設定を読み込める
-- [ ] enabled=trueのディレクトリのみ監視される
-- [ ] ディレクトリのON/OFF切り替えが反映される
-- [ ] 新しいディレクトリの追加が反映される
-- [ ] ディレクトリの削除が反映される
-- [ ] フォールバック設定が動作する
-- [ ] Webフロントエンドから設定を変更できる
+### Phase 2.1 設定同期（完了）
+- [x] データベースから設定を読み込める
+- [x] enabled=trueのディレクトリのみ監視される
+- [x] ディレクトリのON/OFF切り替えが反映される
+- [x] 新しいディレクトリの追加が反映される
+- [x] ディレクトリの削除が反映される
+- [x] フォールバック設定が動作する
+- [x] Webフロントエンドから設定を変更できる
+
+### Phase 2.3 データ同期（完了）
+- [x] SQLiteにファイルイベントが保存される
+- [x] PostgreSQLへバッチ同期が成功する
+- [x] synced_atフラグが正しく更新される
+- [x] 同期ログが記録される
+- [x] データ型整合性（UNIXタイムスタンプ整数、boolean）
+- [x] エラーリカバリ（トランザクション保証）
+
+---
 
 ## 参考資料
 
 - watchdogライブラリ: https://pypi.org/project/watchdog/
-- DesktopActivityMonitor実装: `host-agent/collectors/linux_x11_monitor.py`
-- データベース設計: `docs/design/technical_decision-database_architecture.md`
+- 実装計画: `docs/design/phase2_1_implementation_plan.md`, `docs/design/phase2_3_implementation_plan.md`
+- 手動テスト手順: `docs/manual/humantest-webui.md`, `docs/manual/humantest-db-sync.md`
+- 実装: `host-agent/collectors/filesystem_watcher_v2.py`
+- 設定同期: `host-agent/common/config_sync.py`
+- データ同期: `host-agent/common/data_sync.py`

@@ -73,6 +73,61 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+### 環境変数の設定
+
+host-agentは環境変数を使用してデータベース接続情報を管理します。プロジェクトルートの`.env`ファイルが自動的に検索・読み込まれます。
+
+#### 環境変数の作成
+
+```bash
+# プロジェクトルートで.envを作成
+cd /path/to/reprospective
+cp env.example .env
+vim .env  # 必要に応じて編集
+```
+
+#### 主要な環境変数
+
+| 環境変数 | 説明 | デフォルト値 |
+|---------|------|------------|
+| `DATABASE_URL` | PostgreSQL接続URL（完全指定） | - |
+| `DB_HOST` | PostgreSQLホスト | `localhost` |
+| `DB_PORT` | PostgreSQLポート | `6000` |
+| `DB_NAME` | データベース名 | `reprospective` |
+| `DB_USER` | データベースユーザー名 | `reprospective_user` |
+| `DB_PASSWORD` | データベースパスワード | `change_this_password` |
+| `SQLITE_DESKTOP_PATH` | デスクトップアクティビティSQLiteパス | `data/desktop_activity.db` |
+| `SQLITE_FILE_EVENTS_PATH` | ファイルイベントSQLiteパス | `data/file_changes.db` |
+
+#### 環境変数の優先順位
+
+1. `DATABASE_URL`が設定されている場合、それを最優先
+2. `DB_HOST`, `DB_PORT`等の個別環境変数から構築
+3. 環境変数がない場合、デフォルト値を使用
+
+#### .envファイルの例
+
+```bash
+# PostgreSQL接続設定
+DATABASE_URL=postgresql://reprospective_user:change_this_password@localhost:6000/reprospective
+
+# または個別に指定
+DB_HOST=localhost
+DB_PORT=6000
+DB_NAME=reprospective
+DB_USER=reprospective_user
+DB_PASSWORD=change_this_password
+
+# SQLiteデータベースパス
+SQLITE_DESKTOP_PATH=data/desktop_activity.db
+SQLITE_FILE_EVENTS_PATH=data/file_changes.db
+```
+
+**注意:**
+- `.env`ファイルは`.gitignore`対象なので、gitにコミットされません
+- パスワードや認証情報などの機密情報は`.env`ファイルで管理してください
+- host-agentから`.env`が自動的に検索されるため、シンボリックリンクは不要です
+
 ### 設定ファイルの準備
 
 設定ファイルは既に作成されています（`config/config.yaml`）。
@@ -81,6 +136,7 @@ pip install -r requirements.txt
 ```yaml
 # config/config.yaml
 database:
+  # PostgreSQL接続情報は環境変数で管理（.env参照）
   desktop_activity:
     path: data/desktop_activity.db
   file_changes:

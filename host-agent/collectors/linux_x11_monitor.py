@@ -8,6 +8,7 @@ import subprocess
 import time
 import logging
 import asyncio
+import threading
 from typing import Optional, Tuple
 from pathlib import Path
 import sys
@@ -18,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from common.models import ActivitySession
 from common.database import DesktopActivityDatabase
 from common.data_sync import DataSyncManager
+from common.config import ConfigManager
 
 
 class LinuxX11Monitor:
@@ -228,9 +230,6 @@ async def main_async():
     """
     メイン関数（asyncio版）
     """
-    import yaml
-    from pathlib import Path
-
     # ログ設定
     logging.basicConfig(
         level=logging.INFO,
@@ -240,42 +239,32 @@ async def main_async():
 
     logger = logging.getLogger(__name__)
 
-    # 設定ファイルを読み込み
-    config_path = Path(__file__).parent.parent / "config" / "config.yaml"
+    # 設定マネージャー初期化
+    config_manager = ConfigManager()
 
-    if not config_path.exists():
-        logger.error(f"設定ファイルが見つかりません: {config_path}")
-        logger.info("config.example.yamlをconfig.yamlにコピーしてください")
-        return
-
-    with open(config_path, 'r', encoding='utf-8') as f:
-        config = yaml.safe_load(f)
-
-    # データベースパスを解決（相対パスの場合は host-agent/ からの相対）
-    desktop_db_path = config['database']['desktop_activity']['path']
-    file_db_path = config['database']['file_changes']['path']
-
-    if not Path(desktop_db_path).is_absolute():
-        desktop_db_path = str(Path(__file__).parent.parent / desktop_db_path)
-    if not Path(file_db_path).is_absolute():
-        file_db_path = str(Path(__file__).parent.parent / file_db_path)
+    # データベースパスを取得
+    desktop_db_path = config_manager.get_sqlite_desktop_path()
+    file_db_path = config_manager.get_sqlite_file_events_path()
 
     # データベース初期化
     database = DesktopActivityDatabase(desktop_db_path)
 
+    # デスクトップモニター設定を取得
+    monitor_config = config_manager.get_desktop_monitor_config()
+
     # データ同期マネージャー初期化（有効な場合）
     sync_manager = None
-    if config.get('data_sync', {}).get('enabled', False):
+    sync_config = config_manager.get_data_sync_config()
+    if sync_config.get('enabled', False):
         try:
-            postgres_url = config['database']['postgres_url']
-            sync_config = config['data_sync']
+            postgres_url = config_manager.get_postgres_url()
 
             sync_manager = DataSyncManager(
                 postgres_url=postgres_url,
                 sqlite_desktop_db_path=desktop_db_path,
                 sqlite_file_events_db_path=file_db_path,
                 batch_size=sync_config.get('batch_size', 100),
-                sync_interval=sync_config.get('interval_seconds', 300),
+                sync_interval=sync_config.get('sync_interval_seconds', 300),
                 max_retries=sync_config.get('max_retries', 5)
             )
 
@@ -291,11 +280,20 @@ async def main_async():
             logger.error(f"データ同期マネージャー初期化エラー: {e}")
             logger.info("同期機能なしで続行します")
 
-    # モニター起動
-    monitor = LinuxX11Monitor(config, database)
+    # モニター起動（別スレッドで実行してasyncioループをブロックしないようにする）
+    monitor = LinuxX11Monitor(monitor_config, database)
+    monitor_thread = threading.Thread(target=monitor.start_monitoring, daemon=True)
+    monitor_thread.start()
 
     try:
-        monitor.start_monitoring()
+        # asyncioイベントループを継続実行（同期タスクが動作するように）
+        # モニタースレッドが終了するまで待機
+        while monitor_thread.is_alive():
+            await asyncio.sleep(1.0)
+    except KeyboardInterrupt:
+        logger.info("\nキーボード割り込みを受信しました")
+        monitor.stop_monitoring()
+        monitor_thread.join(timeout=5.0)
     except Exception as e:
         logger.error(f"エラーが発生しました: {e}", exc_info=True)
     finally:

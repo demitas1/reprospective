@@ -16,6 +16,30 @@ sys.path.append(str(Path(__file__).parent.parent))
 from common.database import FileChangeDatabase
 
 
+def parse_event_time(event_time_raw) -> datetime:
+    """
+    イベント時刻を解析してdatetime型に変換
+
+    Args:
+        event_time_raw: イベント時刻（datetime型、ISO文字列、またはタイムスタンプ）
+
+    Returns:
+        datetime: パースされたdatetime型
+    """
+    if isinstance(event_time_raw, str):
+        # ISO形式の文字列の場合
+        return datetime.fromisoformat(event_time_raw)
+    elif isinstance(event_time_raw, (int, float)):
+        # タイムスタンプの場合
+        return datetime.fromtimestamp(event_time_raw)
+    elif isinstance(event_time_raw, datetime):
+        # すでにdatetime型の場合
+        return event_time_raw
+    else:
+        # 不明な型の場合は現在時刻を返す
+        return datetime.now()
+
+
 def format_size(size_bytes: int) -> str:
     """
     ファイルサイズを人間が読みやすい形式にフォーマット
@@ -64,18 +88,18 @@ def show_events(database: FileChangeDatabase, limit: int = 50):
         event_type = event['event_type']
         event_types[event_type] = event_types.get(event_type, 0) + 1
 
-        if event['file_size']:
+        if event.get('file_size'):
             total_size += event['file_size']
 
     # イベント詳細を表示
     for i, event in enumerate(events, 1):
-        event_time = datetime.fromtimestamp(event['event_time'])
+        event_time = parse_event_time(event['event_time'])
         event_type = event['event_type']
         file_name = event['file_name']
         file_path = event['file_path']
-        file_size = format_size(event['file_size']) if event['file_size'] else "-"
+        file_size = format_size(event['file_size']) if event.get('file_size') else "-"
         project_name = event['project_name'] or "(不明)"
-        is_symlink = "シンボリックリンク" if event['is_symlink'] else ""
+        is_symlink = "シンボリックリンク" if event.get('is_symlink') else ""
 
         print(f"{i:3d}. [{event_time.strftime('%Y-%m-%d %H:%M:%S')}] "
               f"{event_type:8s} | {file_name}")
@@ -96,8 +120,8 @@ def show_events(database: FileChangeDatabase, limit: int = 50):
 
     # 時間範囲
     if events:
-        oldest = datetime.fromtimestamp(events[-1]['event_time'])
-        newest = datetime.fromtimestamp(events[0]['event_time'])
+        oldest = parse_event_time(events[-1]['event_time'])
+        newest = parse_event_time(events[0]['event_time'])
         print(f"時間範囲: {oldest.strftime('%Y-%m-%d %H:%M:%S')} ～ "
               f"{newest.strftime('%Y-%m-%d %H:%M:%S')}")
 

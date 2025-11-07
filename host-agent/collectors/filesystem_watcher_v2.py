@@ -22,6 +22,7 @@ import sys
 sys.path.append(str(Path(__file__).parent.parent))
 
 from common.database import FileChangeDatabase
+from common.config import ConfigManager
 from common.config_sync import (
     ConfigSyncManager,
     FallbackConfigManager,
@@ -89,13 +90,19 @@ class FileChangeEventHandler(FileSystemEventHandler):
         _, file_extension = os.path.splitext(file_name)
         project_name = self._estimate_project_name(file_path)
 
+        # タイムスタンプ（UNIXタイムスタンプ整数とISO文字列）
+        event_time = int(time.time())
+        event_time_iso = datetime.fromtimestamp(event_time).isoformat()
+
         return {
-            'event_time': datetime.now(),
+            'event_time': event_time,
+            'event_time_iso': event_time_iso,
             'event_type': event_type,
             'file_path': file_path,
             'file_name': file_name,
             'file_extension': file_extension,
             'project_name': project_name,
+            'monitored_root': self.monitored_root,
         }
 
     def _add_to_buffer(self, event_data: dict):
@@ -384,8 +391,6 @@ async def main_async():
     """
     スタンドアロン実行用メイン関数（非同期版）
     """
-    import yaml
-
     # ログ設定
     logging.basicConfig(
         level=logging.INFO,
@@ -393,33 +398,18 @@ async def main_async():
     )
     logger = logging.getLogger(__name__)
 
-    # 設定ファイル読み込み
-    config_path = Path(__file__).parent.parent / 'config' / 'config.yaml'
-    if not config_path.exists():
-        logger.error(f"設定ファイルが見つかりません: {config_path}")
-        return 1
+    # 設定マネージャー初期化
+    config_manager = ConfigManager()
 
-    with open(config_path) as f:
-        config = yaml.safe_load(f)
-
-    # FileSystemWatcher設定チェック
-    fs_config = config.get('filesystem_watcher', {})
-    if not fs_config.get('enabled', False):
-        logger.error("filesystem_watcher が無効になっています")
-        return 1
+    # FileSystemWatcher設定取得
+    fs_config = config_manager.get_filesystem_watcher_config()
 
     # データベース接続
-    db_config = config.get('database', {})
-    db_path = db_config.get('file_changes', {}).get('path', 'data/file_changes.db')
-
-    # 相対パスの場合はhost-agent/からの相対パスとする
-    if not os.path.isabs(db_path):
-        db_path = str(Path(__file__).parent.parent / db_path)
-
+    db_path = config_manager.get_sqlite_file_events_path()
     database = FileChangeDatabase(db_path)
 
     # PostgreSQL設定同期マネージャーを作成
-    postgres_url = os.getenv('DATABASE_URL', 'postgresql://reprospective_user:change_this_password@localhost:6000/reprospective')
+    postgres_url = config_manager.get_postgres_url()
     yaml_directories = fs_config.get('monitored_directories', [])
 
     config_sync_mgr, fallback_mgr = await create_config_sync_manager(

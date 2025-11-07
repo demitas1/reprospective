@@ -41,7 +41,8 @@ class DesktopActivityDatabase:
     def _connect(self):
         """データベースに接続"""
         try:
-            self.connection = sqlite3.connect(self.db_path)
+            # check_same_thread=False: 複数スレッドから呼び出されるため
+            self.connection = sqlite3.connect(self.db_path, check_same_thread=False)
             self.connection.row_factory = sqlite3.Row  # 辞書形式で結果を取得
             self.logger.info(f"データベースに接続しました: {self.db_path}")
         except Exception as e:

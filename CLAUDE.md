@@ -19,6 +19,44 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Status
 
+**Phase 2.3 - データ同期機能 ✅ 完了** (2025-11-05)
+
+**📋 アクティビティサマリー生成機能 設計完了** (2025-11-06)
+
+### 🔄 次回の再開ポイント
+
+**状況:**
+- Phase 2.3（データベース同期機能）の実装・修正が完了
+- 手動テスト完了、ファイルイベント同期の問題を発見・修正済み
+- デスクトップセッション、ファイルイベント共に正常同期を確認
+- ✅ **アクティビティサマリー生成機能の設計完了** (2025-11-06)
+  - 1436行の設計書を要求仕様書、設計書、実装計画の3文書に分離
+  - 固有名詞匿名化完了、OpenAI GPT-5を第一選択肢に設定（$4.26/月）
+  - 設計上の不明点6項目を決定・確定
+    1. 起動トリガー: オンデマンド実行 + 手動実行（CLI）
+    2. 保存先: PostgreSQL + ファイル出力併用
+    3. エラーハンドリング: リトライ3回、部分的成功は破棄
+    4. 進捗表示: ポーリング方式
+    5. LLMモデル: GPT-5（$4.26/月）、GPT-5-mini（$0.85/月）、GPT-5-nano（$0.17/月）
+    6. 匿名化ログ: すべて記録（実験目的）
+  - **実装開始可能な状態**
+
+**次回の作業候補:**
+1. **Phase 2.4（Web UI活動データ可視化）** - 既存データの可視化
+2. **アクティビティサマリー生成機能の実装** - LLMベースのサマリー生成
+   - 設計完了済み、実装開始可能
+   - 推定工数: 6-10日（Phase 1-4: 基盤実装 → LLM統合 → フィルタ・集約 → 統合テスト）
+
+**参考資料:**
+- `docs/design/phase2_4_implementation_plan.md` - Phase 2.4実装計画
+- `docs/design/summary-generator-requirements.md` - サマリー生成：要求仕様書（580行）
+- `docs/design/summary-generator-design.md` - サマリー生成：設計書（550行）
+- `docs/design/summary-generator-implementation.md` - サマリー生成：実装計画（550行）
+- `logs/2025-11-05/` - Phase 2.3手動テスト時のデータ記録
+- `logs/2025-11-06/` - サマリー生成機能の参考データ
+
+---
+
 **Phase 2.2 - Web UI ✅ 完了** (2025-11-01)
 
 ### ✅ Phase 1 完了 (2025-10-25)
@@ -138,7 +176,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 詳細: `docs/design/phase2_2_implementation_plan.md`, `docs/manual/humantest.md`
 
-### ✅ Phase 2.3 データ同期機能 完了（2025-11-04）
+### ✅ Phase 2.3 データ同期機能 完了（2025-11-05）
 
 #### SQLite → PostgreSQL データ同期
 **実装完了内容:**
@@ -149,19 +187,35 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - ✅ 増分同期（未同期データのみ転送）
 - ✅ collector統合（linux_x11_monitor.pyにasyncio統合）
 - ✅ 管理スクリプト（`scripts/show-sync-stats.sh`）
+- ✅ **データ型問題の修正**（event_time: datetime→int、is_symlink: int→boolean変換）
 
-**動作確認済み:**
-- ✅ 12件のテストデータを正常に同期
-- ✅ PostgreSQLへのデータ挿入成功
-- ✅ `sync_logs`テーブルへの統計記録成功
-- ✅ ISO文字列→TIMESTAMP型変換正常動作
-- ✅ 同期統計表示スクリプト動作確認
+**手動テスト結果（2025-11-05）:**
+- ✅ デスクトップセッション同期: 133件成功
+- ✅ ファイルイベント同期: 8件成功（修正後）
+- ✅ 同期ログ記録: 47回の同期実行を記録
+- ❌ **発見された問題**: ファイルイベント同期で2,288件失敗（修正前）
+  - 原因1: `event_time`がdatetime型（文字列）で保存されていた → int型に修正
+  - 原因2: `is_symlink`が整数で送信されていた → boolean型変換を追加
+
+**実施した修正:**
+1. `filesystem_watcher_v2.py` (94行目)
+   - `event_time = datetime.now()` → `event_time = int(time.time())`
+   - UNIXタイムスタンプ整数として保存
+2. `data_sync.py` (210行目)
+   - `is_symlink = bool(record['is_symlink'])`
+   - PostgreSQL boolean型への変換処理追加
+3. 既存の不正データをクリーンアップ（text型event_timeを削除）
 
 **技術的成果:**
 - SQLiteローカルDB → PostgreSQL中央DBへの自動同期
 - オフライン耐性（ネットワーク障害時もローカルに蓄積）
 - 同期状態管理（synced_atフラグ、sync_logsテーブル）
 - エラーリカバリ（トランザクション保証、バッチ単位コミット）
+- データ型整合性の確保（UNIXタイムスタンプ、boolean型）
+
+**データ記録:**
+- `logs/2025-11-05/desktop_activity_sessions.txt` - 125件のセッション記録
+- `logs/2025-11-05/sync_logs.txt` - 42件の同期ログ記録
 
 詳細: `docs/design/phase2_3_implementation_plan.md`
 
@@ -218,6 +272,45 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - ✅ `docs/manual/error-logging.md` - 利用マニュアル（ON/OFF、確認、消去、細粒度制御、トラブルシューティング）
 
 詳細: `docs/design/frontend-logger.md`, `docs/manual/error-logging.md`
+
+### ✅ Phase 2.3.1 環境変数管理の改善 完了（2025-11-05）
+
+#### 実装完了内容
+**Phase 1: 基盤整備（1-2時間）**
+- ✅ `host-agent/requirements.txt`に`python-dotenv>=1.0.0`追加
+- ✅ `host-agent/common/config.py`新規作成（ConfigManagerクラス）
+- ✅ プロジェクトルート`env.example`更新（DATABASE_URL、DB_PORT=6000等）
+- ✅ `host-agent/env.example`新規作成
+
+**Phase 2: 既存コード移行（2-3時間）**
+- ✅ `linux_x11_monitor.py`、`filesystem_watcher_v2.py`、`test_sync.py`修正
+- ✅ ハードコードされたPostgreSQL接続情報を削除
+
+**Phase 3: 設定ファイル更新（30分）**
+- ✅ `config.yaml`更新（postgres_urlをコメントアウト）
+- ✅ `scripts/start-agent.sh`修正（.env存在確認追加）
+
+**Phase 4: ドキュメント更新（30分-1時間）**
+- ✅ `CLAUDE.md`、`host-agent/README.md`更新
+
+**動作確認済み:**
+- ✅ ConfigManager単体テスト成功（環境変数取得、SQLiteパス解決、YAML設定取得）
+- ✅ 全Pythonファイル構文チェック成功
+
+**技術的成果:**
+- セキュリティリスク解消（パスワードのハードコード削除）
+- 環境ごとの設定切り替え可能（開発・本番の分離）
+- YAML設定との共存（機密情報は環境変数、その他はYAML）
+- シンボリックリンク不要（python-dotenvの自動検索）
+- 下位互換性維持（既存のconfig.yamlも動作）
+
+**修正ファイル: 11ファイル（新規2、修正9）**
+
+**手動テスト手順書:**
+- ✅ `docs/manual/humantest-db-sync.md` - データベース同期機能の確認手順書作成
+- ✅ `docs/manual/humantest-webui.md` - Web UI確認手順書（リネーム）
+
+詳細: `docs/design/refactoring_proposal.md`
 
 ### 📋 Phase 2.4 Web UI 活動データ可視化（計画中）
 
@@ -348,7 +441,22 @@ reprospective/
 │   │   ├── components.json               ✅ Shadcn/ui設定
 │   │   ├── package.json                  ✅ 依存パッケージ
 │   │   └── env.example                   ✅ 環境変数テンプレート
-│   └── ai-analyzer/                      📋 AI分析エンジン（計画中）
+│   └── ai-analyzer/                      📋 AI分析エンジン（設計中）
+│       ├── app/
+│       │   ├── main.py                   📋 サマリー生成CLI
+│       │   ├── summary_generator/        📋 サマリー生成コンポーネント
+│       │   │   ├── log_processor.py      📋 ログ前処理（セッション統合）
+│       │   │   ├── activity_hint_manager.py 📋 ヒント管理・匿名化
+│       │   │   ├── sensitive_filter.py   📋 センシティブコンテンツフィルタ
+│       │   │   ├── llm_service.py        📋 LLMカテゴライザ（OpenAI/Ollama/Claude）
+│       │   │   ├── aggregator.py         📋 集約・ランク付け
+│       │   │   └── json_output.py        📋 JSON出力
+│       │   └── utils/
+│       ├── config/
+│       │   ├── activity_hints.yaml       📋 プロジェクト・カテゴリー定義
+│       │   └── summary_generator.yaml    📋 サマリー生成設定
+│       ├── Dockerfile                    📋 Dockerイメージ
+│       └── requirements.txt              📋 依存パッケージ
 │
 ├── scripts/                              ✅ 管理スクリプト
 │   ├── start.sh                          ✅ PostgreSQL起動
@@ -363,9 +471,15 @@ reprospective/
 ├── docs/
 │   ├── design/                           # 設計ドキュメント
 │   │   ├── phase2_1_implementation_plan.md   ✅ Phase 2.1実装計画（完了）
-│   │   └── phase2_2_implementation_plan.md   ✅ Phase 2.2実装計画（完了）
+│   │   ├── phase2_2_implementation_plan.md   ✅ Phase 2.2実装計画（完了）
+│   │   ├── phase2_3_implementation_plan.md   ✅ Phase 2.3実装計画（完了）
+│   │   ├── phase2_4_implementation_plan.md   📋 Phase 2.4実装計画（次候補）
+│   │   ├── summary-generator-requirements.md ✅ サマリー生成機能：要求仕様書
+│   │   ├── summary-generator-design.md       ✅ サマリー生成機能：設計書
+│   │   └── summary-generator-implementation.md ✅ サマリー生成機能：実装計画
 │   └── manual/                           # 運用マニュアル
-│       └── humantest.md                  ✅ Web UI人間動作確認手順書
+│       ├── humantest-webui.md            ✅ Web UI人間動作確認手順書
+│       └── humantest-db-sync.md          ✅ データベース同期確認手順書
 │
 ├── docker-compose.yml                    ✅ Docker Compose設定
 └── env.example                           ✅ 環境変数テンプレート
@@ -376,12 +490,22 @@ reprospective/
 ```
 reprospective/
 ├── services/
-│   └── ai-analyzer/                      📋 AI分析エンジン
-│       └── analyzers/                    # 各種分析ロジック
-└── shared/                               📋 共有ライブラリ
+│   └── ai-analyzer/                      📋 AI分析エンジン（設計完了、実装待ち）
+│       ├── summary_generator/            # アクティビティサマリー生成
+│       └── analyzers/                    # 将来の追加分析機能
+└── shared/                               📋 共有ライブラリ（計画中）
     ├── models/                           # 共通データモデル
     └── utils/                            # ユーティリティ
 ```
+
+**ai-analyzer実装の前提条件:**
+- 設計上の不明点6項目の決定（`docs/design/summary-generator.md` 参照）
+  1. 起動トリガー（オンデマンド/定期実行/ハイブリッド）
+  2. サマリー保存先（PostgreSQL/ファイル/両方）
+  3. エラーハンドリング戦略
+  4. バッチ処理の進捗表示方法
+  5. LLMモデル選択（GPT-4 Turbo/GPT-4o/GPT-5）
+  6. 匿名化デバッグログの機密性管理
 
 ---
 
@@ -646,6 +770,120 @@ http://localhost:3333/?test=error-logger
 ---
 
 ## 実装履歴
+
+### 2025-11-05: Phase 2.3 データ同期機能の修正・完了
+
+**手動テスト実施（実績1時間）:**
+- デスクトップセッション同期: 正常動作確認
+- ファイルイベント同期: 2,288件の失敗を発見
+
+**問題調査（実績30分）:**
+1. **問題1: event_timeのデータ型不一致**
+   - PostgreSQL: `bigint`型（UNIXタイムスタンプ）を期待
+   - SQLite: `text`型（`'2025-11-05 21:16:00.486786'`）で保存されていた
+   - 原因: `filesystem_watcher_v2.py`で`datetime.now()`をそのまま保存
+
+2. **問題2: is_symlinkのboolean型変換不足**
+   - PostgreSQL: `boolean`型を期待
+   - 送信: 整数`0`が送られていた
+   - 原因: `data_sync.py`で型変換処理がなかった
+
+**修正実装（実績1.5時間）:**
+1. `filesystem_watcher_v2.py` (94-95行目)
+   ```python
+   # 修正前
+   event_time = datetime.now()
+   event_time_iso = event_time.isoformat()
+
+   # 修正後
+   event_time = int(time.time())
+   event_time_iso = datetime.fromtimestamp(event_time).isoformat()
+   ```
+
+2. `data_sync.py` (209-210行目)
+   ```python
+   # 追加
+   is_symlink = bool(record['is_symlink']) if record.get('is_symlink') is not None else False
+   ```
+
+3. `common/database.py` (44-45行目)
+   ```python
+   # SQLiteスレッドセーフティ修正
+   self.connection = sqlite3.connect(self.db_path, check_same_thread=False)
+   ```
+
+4. `scripts/show_file_events.py` (19-40行目)
+   ```python
+   # parse_event_time()関数を追加してタイムスタンプ変換を統一
+   ```
+
+5. 既存データクリーンアップ
+   - text型の不正データを削除（147件）
+
+**動作確認（実績30分）:**
+- ✅ ファイルイベント同期成功: 8件
+- ✅ デスクトップセッション同期継続成功
+- ✅ 同期ログ正常記録
+- ✅ PostgreSQLデータ確認完了
+
+**修正ファイル: 5ファイル**
+- `host-agent/collectors/filesystem_watcher_v2.py`
+- `host-agent/common/data_sync.py`
+- `host-agent/common/database.py`
+- `host-agent/collectors/linux_x11_monitor.py`（スレッド分離）
+- `host-agent/scripts/show_file_events.py`
+
+**データ保存:**
+- `logs/2025-11-05/desktop_activity_sessions.txt` (125件)
+- `logs/2025-11-05/sync_logs.txt` (42件の同期ログ)
+
+---
+
+### 2025-11-05: Phase 2.3.1 環境変数管理の改善完了
+
+**実装内容（実績4-6時間）:**
+
+**Phase 1: 基盤整備（1-2時間）**
+- ✅ `host-agent/requirements.txt`に`python-dotenv>=1.0.0`追加
+- ✅ `host-agent/common/config.py`新規作成（ConfigManagerクラス実装）
+  - `find_dotenv(usecwd=True)`で親ディレクトリの.envを自動検索
+  - PostgreSQL接続URL取得（環境変数 > デフォルト値の優先順位）
+  - SQLiteパス取得（相対パス→絶対パス変換）
+  - YAML設定取得（data_sync, desktop_monitor, filesystem_watcher）
+- ✅ プロジェクトルート`env.example`更新
+  - `DATABASE_URL`, `DB_PORT=6000`に変更
+  - `SQLITE_DESKTOP_PATH`, `SQLITE_FILE_EVENTS_PATH`追加
+- ✅ `host-agent/env.example`新規作成
+
+**Phase 2: 既存コード移行（2-3時間）**
+- ✅ `linux_x11_monitor.py`修正：ConfigManager使用に変更
+- ✅ `filesystem_watcher_v2.py`修正：ConfigManager使用に変更
+- ✅ `test_sync.py`修正：ConfigManager使用に変更
+- ✅ ハードコードされたPostgreSQL接続情報を削除
+
+**Phase 3: 設定ファイル更新（30分）**
+- ✅ `config.yaml`更新：`postgres_url`をコメントアウト、環境変数移行ガイド追加
+- ✅ `scripts/start-agent.sh`修正：.env存在確認ロジック追加
+
+**Phase 4: ドキュメント更新（30分-1時間）**
+- ✅ `CLAUDE.md`更新：実装履歴追加
+- ✅ `host-agent/README.md`更新：環境変数設定説明追加
+
+**技術的成果:**
+- セキュリティリスク解消（パスワードのハードコード削除）
+- 環境ごとの設定切り替え可能（開発・本番の分離）
+- YAML設定との共存（機密情報は環境変数、その他はYAML）
+- シンボリックリンク不要（python-dotenvの自動検索）
+- 下位互換性維持（既存のconfig.yamlも動作）
+
+**環境変数の優先順位:**
+1. `DATABASE_URL`が設定されている場合、それを最優先
+2. `DB_HOST`, `DB_PORT`等の個別環境変数から構築
+3. デフォルト値を使用
+
+**修正ファイル: 11ファイル（新規2、修正9）**
+
+---
 
 ### 2025-11-04: Phase 2.3 データ同期機能完了
 

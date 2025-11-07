@@ -136,6 +136,21 @@ echo "host-agent 起動"
 echo "================================"
 echo ""
 
+# .envファイルの確認
+if [ ! -f "$PROJECT_ROOT/.env" ]; then
+    echo "⚠️  .envファイルが見つかりません"
+    echo "💡 env.exampleをコピーして.envを作成してください:"
+    echo "   cp env.example .env"
+    echo ""
+    read -p "デフォルト設定で続行しますか？ (y/N): " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        exit 1
+    fi
+    echo "⚠️  デフォルト設定で続行します（環境変数が設定されていない場合、接続エラーが発生する可能性があります）"
+    echo ""
+fi
+
 # 設定ファイルの確認
 if [ ! -f "$HOST_AGENT_DIR/config/config.yaml" ]; then
     echo "⚠️  設定ファイルが見つかりません"

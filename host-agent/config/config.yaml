@@ -3,11 +3,16 @@
 
 # データベース設定
 database:
+  # SQLiteデータベースパス（環境変数 SQLITE_DESKTOP_PATH, SQLITE_FILE_EVENTS_PATH で上書き可能）
   desktop_activity:
     path: data/desktop_activity.db
   file_changes:
     path: data/file_changes.db
-  postgres_url: "postgresql://reprospective_user:change_this_password@localhost:6000/reprospective"
+
+  # PostgreSQL接続設定（非推奨: 環境変数に移行しました）
+  # 以下の設定は環境変数 DATABASE_URL または DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD で指定してください
+  # 詳細は host-agent/README.md および プロジェクトルート/env.example を参照
+  # postgres_url: "postgresql://reprospective_user:change_this_password@localhost:6000/reprospective"
 
 # データ同期設定
 data_sync:

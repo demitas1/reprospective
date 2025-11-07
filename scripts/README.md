@@ -102,6 +102,79 @@ PostgreSQLデータベースから監視対象ディレクトリの一覧を表�
 無効: 0件
 ```
 
+#### show-desktop-sessions.sh
+PostgreSQLのdesktop_activity_sessionsテーブルから最新n件を表示します。
+
+```bash
+./scripts/show-desktop-sessions.sh [件数]
+```
+
+**オプション:**
+- `件数`: 表示する最新セッションの件数（デフォルト: 10件）
+
+**例:**
+```bash
+./scripts/show-desktop-sessions.sh       # 最新10件を表示
+./scripts/show-desktop-sessions.sh 20    # 最新20件を表示
+./scripts/show-desktop-sessions.sh 50    # 最新50件を表示
+```
+
+**機能:**
+- セッション情報を新しい順に表示
+- 総レコード数を表示
+- 日時を見やすい形式で表示（YYYY-MM-DD HH24:MI:SS）
+
+**出力例:**
+```
+================================================
+Desktop Activity Sessions (最新 10 件)
+================================================
+
+ id  |    application_name    |           window_title            |     start_time      |      end_time       | duration_seconds |     created_at
+-----+------------------------+-----------------------------------+---------------------+---------------------+------------------+---------------------
+ 113 | org.wezfurlong.wezterm | [2/3] ✳ PostgreSQL最新レコード表示 | 2025-11-06 10:02:46 |                     |                  | 2025-11-06 10:02:51
+ 112 | org.wezfurlong.wezterm | ~/work/github.com/reprospective   | 2025-11-06 10:01:06 | 2025-11-06 10:02:46 |              100 | 2025-11-06 10:02:51
+
+総レコード数:
+   113
+```
+
+#### show-file-events.sh
+PostgreSQLのfile_change_eventsテーブルから最新n件を表示します。
+
+```bash
+./scripts/show-file-events.sh [件数]
+```
+
+**オプション:**
+- `件数`: 表示する最新イベントの件数（デフォルト: 10件）
+
+**例:**
+```bash
+./scripts/show-file-events.sh       # 最新10件を表示
+./scripts/show-file-events.sh 20    # 最新20件を表示
+./scripts/show-file-events.sh 50    # 最新50件を表示
+```
+
+**機能:**
+- ファイルイベントを新しい順に表示
+- 総レコード数を表示
+- UNIXタイムスタンプを見やすい日時形式に変換
+
+**出力例:**
+```
+================================================
+File Change Events (最新 10 件)
+================================================
+
+ id | event_type |                file_path                | file_extension |     event_time      | file_size | is_symlink |    monitored_root     | project_name |     created_at
+----+------------+-----------------------------------------+----------------+---------------------+-----------+------------+-----------------------+--------------+---------------------
+ 46 | modified   | /home/demitas/Documents/foam-test/todo/ | .md            | 2025-11-06 09:31:34 |           | f          | /home/demitas/Documen | todo         | 2025-11-06 09:32:50
+
+総レコード数:
+    46
+```
+
 #### show-error-logs.sh
 フロントエンドエラーログを表示します。
 
@@ -169,6 +242,66 @@ PostgreSQLデータベースから監視対象ディレクトリの一覧を表�
 - 削除後の確認メッセージ
 
 **⚠️ 警告:** この操作は元に戻せません
+
+#### backup-daily-logs.sh
+PostgreSQLに記録されている今日のデータを日付別ディレクトリにバックアップします。
+
+```bash
+./scripts/backup-daily-logs.sh [日付]
+```
+
+**オプション:**
+- `日付`: バックアップする日付（YYYY-MM-DD形式、省略時は今日）
+
+**例:**
+```bash
+./scripts/backup-daily-logs.sh             # 今日のデータをバックアップ
+./scripts/backup-daily-logs.sh 2025-11-06  # 指定日のデータをバックアップ
+./scripts/backup-daily-logs.sh 2025-11-05  # 昨日のデータをバックアップ
+```
+
+**機能:**
+- デスクトップアクティビティセッションをバックアップ
+- ファイル変更イベントをバックアップ
+- 同期ログをバックアップ
+- 日付別ディレクトリに保存（`./logs/YYYY-MM-DD/`）
+- 各ファイルの件数統計を表示
+
+**出力ファイル:**
+- `desktop_activity_sessions.txt`: デスクトップアクティビティセッション（時系列順）
+- `file_change_events.txt`: ファイル変更イベント（時系列順）
+- `sync_logs.txt`: 同期ログ（時系列順）
+
+**出力例:**
+```
+================================================
+日次ログバックアップ: 2025-11-06
+================================================
+出力先: /home/demitas/work/github.com/reprospective/logs/2025-11-06
+
+[1/3] デスクトップアクティビティセッションをバックアップ中...
+  ✓ 376件のセッションを記録しました
+  → /home/demitas/work/github.com/reprospective/logs/2025-11-06/desktop_activity_sessions.txt
+
+[2/3] ファイル変更イベントをバックアップ中...
+  ✓ 450件のファイルイベントを記録しました
+  → /home/demitas/work/github.com/reprospective/logs/2025-11-06/file_change_events.txt
+
+[3/3] 同期ログをバックアップ中...
+  ✓ 74件の同期ログを記録しました
+  → /home/demitas/work/github.com/reprospective/logs/2025-11-06/sync_logs.txt
+
+================================================
+バックアップ完了
+================================================
+対象日: 2025-11-06
+出力先: /home/demitas/work/github.com/reprospective/logs/2025-11-06
+
+統計:
+  - デスクトップセッション: 376件
+  - ファイルイベント: 450件
+  - 同期ログ: 74件
+```
 
 ### API管理スクリプト
 

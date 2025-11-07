@@ -206,6 +206,9 @@ class DataSyncManager:
                                 if record['event_time_iso']:
                                     event_time_iso = datetime.fromisoformat(record['event_time_iso'].replace('Z', '+00:00'))
 
+                                # is_symlinkをboolean型に変換（SQLiteでは整数で保存されている）
+                                is_symlink = bool(record['is_symlink']) if record.get('is_symlink') is not None else False
+
                                 await conn.execute("""
                                     INSERT INTO file_change_events
                                     (event_time, event_time_iso, event_type, file_path,
@@ -216,7 +219,7 @@ class DataSyncManager:
                                     record['event_type'], record['file_path'],
                                     record['file_path_relative'], record['file_name'],
                                     record['file_extension'], record['file_size'],
-                                    record['is_symlink'], record['monitored_root'],
+                                    is_symlink, record['monitored_root'],
                                     record['project_name'])
 
                                 synced_ids.append(record['id'])

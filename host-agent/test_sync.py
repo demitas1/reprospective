@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from common.database import DesktopActivityDatabase, FileChangeDatabase
 from common.models import ActivitySession
 from common.data_sync import DataSyncManager
+from common.config import ConfigManager
 
 
 async def test_sync():
@@ -30,10 +31,13 @@ async def test_sync():
 
     logger = logging.getLogger(__name__)
 
-    # データベースパス
-    desktop_db_path = "./data/desktop_activity.db"
-    file_db_path = "./data/file_changes.db"
-    postgres_url = "postgresql://reprospective_user:change_this_password@localhost:6000/reprospective"
+    # 設定マネージャー初期化
+    config_manager = ConfigManager()
+
+    # データベースパスとPostgreSQL URLを取得
+    desktop_db_path = config_manager.get_sqlite_desktop_path()
+    file_db_path = config_manager.get_sqlite_file_events_path()
+    postgres_url = config_manager.get_postgres_url()
 
     logger.info("=" * 60)
     logger.info("データ同期機能テスト開始")
