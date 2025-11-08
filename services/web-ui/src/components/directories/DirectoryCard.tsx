@@ -56,11 +56,16 @@ export const DirectoryCard = ({
           />
           <div className="flex-1 min-w-0">
             <h3 className="font-semibold text-lg truncate">
-              {directory.display_name || directory.directory_path.split('/').pop()}
+              {directory.display_name || (directory.display_path || directory.directory_path).split('/').pop()}
             </h3>
-            <p className="text-sm text-muted-foreground truncate" title={directory.directory_path}>
-              {directory.directory_path}
+            <p className="text-sm text-muted-foreground truncate" title={directory.display_path || directory.directory_path}>
+              {directory.display_path || directory.directory_path}
             </p>
+            {directory.resolved_path && directory.resolved_path !== (directory.display_path || directory.directory_path) && (
+              <p className="text-xs text-blue-600 mt-1 truncate" title={directory.resolved_path}>
+                → 実体: {directory.resolved_path}
+              </p>
+            )}
             {directory.description && (
               <p className="text-sm text-muted-foreground mt-2">
                 {directory.description}

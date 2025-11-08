@@ -12,6 +12,7 @@ from app.models import (
     MonitoredDirectoryCreate,
     MonitoredDirectoryUpdate,
 )
+from app.utils import resolve_directory_path
 
 router = APIRouter(prefix="/api/v1/directories", tags=["directories"])
 logger = logging.getLogger(__name__)
@@ -31,6 +32,7 @@ async def list_directories(
         if enabled_only:
             query = """
                 SELECT id, directory_path, enabled, display_name, description,
+                       display_path, resolved_path,
                        created_at, updated_at, created_by, updated_by
                 FROM monitored_directories
                 WHERE enabled = true
@@ -39,6 +41,7 @@ async def list_directories(
         else:
             query = """
                 SELECT id, directory_path, enabled, display_name, description,
+                       display_path, resolved_path,
                        created_at, updated_at, created_by, updated_by
                 FROM monitored_directories
                 ORDER BY updated_at DESC
@@ -68,6 +71,7 @@ async def get_directory(
     try:
         query = """
             SELECT id, directory_path, enabled, display_name, description,
+                   display_path, resolved_path,
                    created_at, updated_at, created_by, updated_by
             FROM monitored_directories
             WHERE id = $1
@@ -103,24 +107,34 @@ async def create_directory(
         directory: ディレクトリ情報
     """
     try:
+        # パス解決
+        display_path, resolved_path = resolve_directory_path(directory.directory_path)
+
         query = """
             INSERT INTO monitored_directories
-                (directory_path, enabled, display_name, description, created_by, updated_by)
-            VALUES ($1, $2, $3, $4, $5, $6)
+                (directory_path, enabled, display_name, description,
+                 display_path, resolved_path, created_by, updated_by)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             RETURNING id, directory_path, enabled, display_name, description,
+                      display_path, resolved_path,
                       created_at, updated_at, created_by, updated_by
         """
         row = await conn.fetchrow(
             query,
-            directory.directory_path,
+            display_path,  # directory_path（正規化済み）
             directory.enabled,
             directory.display_name,
             directory.description,
+            display_path,  # display_path
+            resolved_path,  # resolved_path（解決失敗時はNone）
             directory.created_by,
             directory.created_by,
         )
 
-        logger.info(f"ディレクトリ追加成功: {directory.directory_path}")
+        logger.info(
+            f"ディレクトリ追加成功: {display_path}"
+            + (f" -> {resolved_path}" if resolved_path and resolved_path != display_path else "")
+        )
         return dict(row)
 
     except asyncpg.UniqueViolationError:
@@ -166,8 +180,19 @@ async def update_directory(
         param_count = 2
 
         if directory.directory_path is not None:
+            # パス解決
+            display_path, resolved_path = resolve_directory_path(directory.directory_path)
+
             update_fields.append(f"directory_path = ${param_count}")
-            params.append(directory.directory_path)
+            params.append(display_path)
+            param_count += 1
+
+            update_fields.append(f"display_path = ${param_count}")
+            params.append(display_path)
+            param_count += 1
+
+            update_fields.append(f"resolved_path = ${param_count}")
+            params.append(resolved_path)
             param_count += 1
 
         if directory.enabled is not None:
@@ -199,6 +224,7 @@ async def update_directory(
             SET {", ".join(update_fields)}
             WHERE id = $1
             RETURNING id, directory_path, enabled, display_name, description,
+                      display_path, resolved_path,
                       created_at, updated_at, created_by, updated_by
         """
 
@@ -271,6 +297,7 @@ async def toggle_directory(
             SET enabled = NOT enabled, updated_by = 'api'
             WHERE id = $1
             RETURNING id, directory_path, enabled, display_name, description,
+                      display_path, resolved_path,
                       created_at, updated_at, created_by, updated_by
         """
         row = await conn.fetchrow(query, directory_id)

@@ -296,12 +296,19 @@ class FileSystemWatcherV2:
             pg_directories = await self.config_sync_manager.get_monitored_directories()
             pg_paths = {d.directory_path for d in pg_directories}
 
+            # ディレクトリ情報をマップに保存（ログ出力用）
+            dir_info_map = {d.directory_path: d for d in pg_directories}
+
             # 現在の監視対象と比較
             current_paths = self.monitored_dirs.copy()
 
             # 新規追加されたディレクトリを監視開始
             for path in pg_paths - current_paths:
-                self.logger.info(f"新しいディレクトリを検出: {path}")
+                dir_info = dir_info_map.get(path)
+                if dir_info and dir_info.display_path and dir_info.display_path != path:
+                    self.logger.info(f"新しいディレクトリを検出: {dir_info.display_path} -> {path}")
+                else:
+                    self.logger.info(f"新しいディレクトリを検出: {path}")
                 self._start_observer(path)
 
             # 削除されたディレクトリの監視を停止

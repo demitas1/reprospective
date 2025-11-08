@@ -14,6 +14,8 @@ class MonitoredDirectoryBase(BaseModel):
     enabled: bool = Field(default=True, description="有効/無効")
     display_name: Optional[str] = Field(None, max_length=100, description="表示名")
     description: Optional[str] = Field(None, max_length=500, description="説明")
+    display_path: Optional[str] = Field(None, description="表示用パス（ユーザー入力値）")
+    resolved_path: Optional[str] = Field(None, description="実体パス（シンボリックリンク解決後）")
 
     @field_validator("directory_path")
     @classmethod
@@ -45,6 +47,8 @@ class MonitoredDirectoryUpdate(BaseModel):
     enabled: Optional[bool] = Field(None, description="有効/無効")
     display_name: Optional[str] = Field(None, max_length=100, description="表示名")
     description: Optional[str] = Field(None, max_length=500, description="説明")
+    display_path: Optional[str] = Field(None, description="表示用パス（ユーザー入力値）")
+    resolved_path: Optional[str] = Field(None, description="実体パス（シンボリックリンク解決後）")
     updated_by: str = Field(default="api", description="更新者")
 
     @field_validator("directory_path")

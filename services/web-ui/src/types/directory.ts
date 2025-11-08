@@ -16,6 +16,8 @@ export interface Directory {
   enabled: boolean;                // バックエンドと一致（is_enabled ではない）
   display_name: string | null;
   description: string | null;
+  display_path: string | null;     // 表示用パス（ユーザー入力値）
+  resolved_path: string | null;    // 実体パス（シンボリックリンク解決後）
   created_at: string;              // ISO 8601形式の日時文字列
   updated_at: string;              // ISO 8601形式の日時文字列
   created_by: string;

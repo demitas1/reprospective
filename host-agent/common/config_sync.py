@@ -20,10 +20,12 @@ logger = logging.getLogger(__name__)
 class MonitoredDirectory:
     """監視対象ディレクトリの設定"""
     id: int
-    directory_path: str
+    directory_path: str  # 実際に監視するパス（resolved_path優先）
     enabled: bool
     display_name: Optional[str] = None
     description: Optional[str] = None
+    display_path: Optional[str] = None  # 表示用パス（ユーザー入力値）
+    resolved_path: Optional[str] = None  # 実体パス（シンボリックリンク解決後）
 
 
 class ConfigSyncManager:
@@ -95,23 +97,30 @@ class ConfigSyncManager:
             async with self._pool.acquire() as conn:
                 rows = await conn.fetch(
                     """
-                    SELECT id, directory_path, enabled, display_name, description
+                    SELECT id, directory_path, enabled, display_name, description,
+                           display_path, resolved_path
                     FROM monitored_directories
                     WHERE enabled = true
                     ORDER BY id
                     """
                 )
 
-                directories = [
-                    MonitoredDirectory(
-                        id=row["id"],
-                        directory_path=row["directory_path"],
-                        enabled=row["enabled"],
-                        display_name=row["display_name"],
-                        description=row["description"],
+                directories = []
+                for row in rows:
+                    # resolved_pathを優先、なければdirectory_pathを使用
+                    watch_path = row["resolved_path"] if row["resolved_path"] else row["directory_path"]
+
+                    directories.append(
+                        MonitoredDirectory(
+                            id=row["id"],
+                            directory_path=watch_path,  # 監視用パス
+                            enabled=row["enabled"],
+                            display_name=row["display_name"],
+                            description=row["description"],
+                            display_path=row["display_path"],  # 表示用パス
+                            resolved_path=row["resolved_path"],  # 実体パス
+                        )
                     )
-                    for row in rows
-                ]
 
                 logger.debug(f"PostgreSQLから{len(directories)}件のディレクトリを取得")
                 return directories
