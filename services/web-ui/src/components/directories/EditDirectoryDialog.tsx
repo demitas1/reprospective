@@ -47,6 +47,12 @@ export const EditDirectoryDialog = ({
     setValue,
   } = useForm<DirectoryUpdateFormData>({
     resolver: zodResolver(directoryUpdateSchema),
+    defaultValues: {
+      directory_path: '',
+      enabled: false,
+      display_name: '',
+      description: '',
+    },
   });
 
   const enabled = watch('enabled');
