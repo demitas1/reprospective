@@ -25,12 +25,14 @@ usage() {
     echo "  --all              すべてのエージェントを起動 (デフォルト)"
     echo "  --desktop          デスクトップモニターのみ起動"
     echo "  --files            ファイルシステムウォッチャーのみ起動"
+    echo "  --input            入力モニターのみ起動"
     echo "  -h, --help         このヘルプを表示"
     echo ""
     echo "例:"
     echo "  $0                 # すべて起動"
     echo "  $0 --desktop       # デスクトップモニターのみ"
     echo "  $0 --files         # ファイルウォッチャーのみ"
+    echo "  $0 --input         # 入力モニターのみ"
     exit 1
 }
 
@@ -97,6 +99,7 @@ start_agent() {
 START_ALL=true
 START_DESKTOP=false
 START_FILES=false
+START_INPUT=false
 
 if [ $# -eq 0 ]; then
     START_ALL=true
@@ -112,6 +115,9 @@ else
                 ;;
             --files)
                 START_FILES=true
+                ;;
+            --input)
+                START_INPUT=true
                 ;;
             -h|--help)
                 usage
@@ -129,6 +135,7 @@ fi
 if [ "$START_ALL" = true ]; then
     START_DESKTOP=true
     START_FILES=true
+    START_INPUT=true
 fi
 
 echo "================================"
@@ -175,6 +182,12 @@ if [ "$START_FILES" = true ]; then
     fi
 fi
 
+if [ "$START_INPUT" = true ]; then
+    if start_agent "input-monitor" "collectors/input_monitor.py"; then
+        STARTED_COUNT=$((STARTED_COUNT + 1))
+    fi
+fi
+
 echo ""
 echo "================================"
 echo "✅ 起動完了 ($STARTED_COUNT エージェント)"
@@ -195,6 +208,9 @@ echo ""
 echo "💡 便利なコマンド:"
 echo "   ./scripts/stop-agent.sh                # すべて停止"
 echo "   ./scripts/stop-agent.sh --desktop      # デスクトップモニターのみ停止"
-echo "   tail -f $LOG_DIR/desktop-monitor.log   # ログ確認"
-echo "   cd host-agent && python scripts/show_sessions.py      # データ確認"
+echo "   ./scripts/stop-agent.sh --input        # 入力モニターのみ停止"
+echo "   tail -f $LOG_DIR/desktop-monitor.log   # デスクトップログ確認"
+echo "   tail -f $LOG_DIR/input-monitor.log     # 入力モニターログ確認"
+echo "   cd host-agent && python scripts/show_sessions.py         # デスクトップデータ確認"
+echo "   cd host-agent && python scripts/show_input_sessions.py   # 入力データ確認"
 echo ""

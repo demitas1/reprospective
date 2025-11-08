@@ -20,12 +20,14 @@ usage() {
     echo "  --all              すべてのエージェントを停止 (デフォルト)"
     echo "  --desktop          デスクトップモニターのみ停止"
     echo "  --files            ファイルシステムウォッチャーのみ停止"
+    echo "  --input            入力モニターのみ停止"
     echo "  -h, --help         このヘルプを表示"
     echo ""
     echo "例:"
     echo "  $0                 # すべて停止"
     echo "  $0 --desktop       # デスクトップモニターのみ"
     echo "  $0 --files         # ファイルウォッチャーのみ"
+    echo "  $0 --input         # 入力モニターのみ"
     exit 1
 }
 
@@ -92,6 +94,7 @@ stop_agent() {
 STOP_ALL=true
 STOP_DESKTOP=false
 STOP_FILES=false
+STOP_INPUT=false
 
 if [ $# -eq 0 ]; then
     STOP_ALL=true
@@ -107,6 +110,9 @@ else
                 ;;
             --files)
                 STOP_FILES=true
+                ;;
+            --input)
+                STOP_INPUT=true
                 ;;
             -h|--help)
                 usage
@@ -124,6 +130,7 @@ fi
 if [ "$STOP_ALL" = true ]; then
     STOP_DESKTOP=true
     STOP_FILES=true
+    STOP_INPUT=true
 fi
 
 echo "================================"
@@ -148,6 +155,12 @@ fi
 
 if [ "$STOP_FILES" = true ]; then
     if stop_agent "filesystem-watcher"; then
+        STOPPED_COUNT=$((STOPPED_COUNT + 1))
+    fi
+fi
+
+if [ "$STOP_INPUT" = true ]; then
+    if stop_agent "input-monitor"; then
         STOPPED_COUNT=$((STOPPED_COUNT + 1))
     fi
 fi
