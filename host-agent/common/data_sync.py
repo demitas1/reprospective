@@ -34,6 +34,7 @@ class DataSyncManager:
         postgres_url: str,
         sqlite_desktop_db_path: str,
         sqlite_file_events_db_path: str,
+        sqlite_input_db_path: Optional[str] = None,
         batch_size: int = 100,
         sync_interval: int = 300,
         max_retries: int = 5
@@ -45,6 +46,7 @@ class DataSyncManager:
             postgres_url: PostgreSQL接続URL
             sqlite_desktop_db_path: デスクトップアクティビティSQLiteパス
             sqlite_file_events_db_path: ファイルイベントSQLiteパス
+            sqlite_input_db_path: 入力アクティビティSQLiteパス（オプション）
             batch_size: 1回の同期バッチサイズ
             sync_interval: 同期間隔（秒）
             max_retries: 最大リトライ回数
@@ -52,6 +54,7 @@ class DataSyncManager:
         self.postgres_url = postgres_url
         self.sqlite_desktop_db_path = sqlite_desktop_db_path
         self.sqlite_file_events_db_path = sqlite_file_events_db_path
+        self.sqlite_input_db_path = sqlite_input_db_path
         self.batch_size = batch_size
         self.sync_interval = sync_interval
         self.max_retries = max_retries
@@ -60,6 +63,9 @@ class DataSyncManager:
         self.pool: Optional[asyncpg.Pool] = None
         self._sync_task: Optional[asyncio.Task] = None
         self._stop_event = asyncio.Event()
+
+        # ホスト識別子を初期化時に取得
+        self.host_identifier = self._get_host_identifier()
 
     async def initialize(self):
         """PostgreSQL接続プールを初期化"""
@@ -92,7 +98,7 @@ class DataSyncManager:
         return f"{hostname}_{username}"
 
     async def sync_all(self):
-        """全テーブルを同期（desktop_activity_sessions + file_change_events）"""
+        """全テーブルを同期（desktop_activity_sessions + file_change_events + input_activity_sessions）"""
         self.logger.info("データ同期を開始します...")
 
         # デスクトップアクティビティを同期
@@ -100,6 +106,9 @@ class DataSyncManager:
 
         # ファイル変更イベントを同期
         await self._sync_file_events()
+
+        # 入力活動セッションを同期
+        await self._sync_input_activity()
 
         self.logger.info("データ同期が完了しました")
 
@@ -335,6 +344,138 @@ class DataSyncManager:
             placeholders = ','.join('?' * len(record_ids))
             cursor.execute(f"""
                 UPDATE file_change_events
+                SET synced_at = ?
+                WHERE id IN ({placeholders})
+            """, [current_time] + record_ids)
+
+            conn.commit()
+            conn.close()
+
+        except Exception as e:
+            self.logger.error(f"synced_atフラグ更新エラー: {e}")
+
+    async def _sync_input_activity(self):
+        """入力活動セッションを同期"""
+        # 入力アクティビティDBが設定されていない場合はスキップ
+        if not self.sqlite_input_db_path:
+            self.logger.debug("入力アクティビティDB未設定のため同期をスキップ")
+            return
+
+        table_name = "input_activity_sessions"
+        sync_started_at = datetime.now()
+        records_synced = 0
+        records_failed = 0
+        error_message = None
+
+        try:
+            # SQLiteから未同期レコードを取得
+            unsynced_records = self._get_unsynced_input_records()
+
+            if not unsynced_records:
+                self.logger.debug(f"{table_name}: 未同期レコードがありません")
+                return
+
+            self.logger.info(f"{table_name}: {len(unsynced_records)}件の未同期レコードを検出")
+
+            # バッチ単位でPostgreSQLに挿入
+            for i in range(0, len(unsynced_records), self.batch_size):
+                batch = unsynced_records[i:i + self.batch_size]
+                synced_ids = []
+
+                try:
+                    async with self.pool.acquire() as conn:
+                        async with conn.transaction():
+                            for record in batch:
+                                # ISO文字列をPostgreSQLのTIMESTAMPに変換
+                                start_time_iso = None
+                                if record['start_time_iso']:
+                                    start_time_iso = datetime.fromisoformat(record['start_time_iso'].replace('Z', '+00:00'))
+
+                                end_time_iso = None
+                                if record['end_time_iso']:
+                                    end_time_iso = datetime.fromisoformat(record['end_time_iso'].replace('Z', '+00:00'))
+
+                                await conn.execute("""
+                                    INSERT INTO input_activity_sessions
+                                    (start_time, end_time, start_time_iso, end_time_iso,
+                                     duration_seconds, created_at, updated_at,
+                                     host_identifier, synced_from_local_id)
+                                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                                """, record['start_time'], record['end_time'],
+                                    start_time_iso, end_time_iso,
+                                    record['duration_seconds'], record['created_at'],
+                                    record['updated_at'], self.host_identifier, record['id'])
+
+                                synced_ids.append(record['id'])
+
+                    # SQLiteのsynced_atフラグを更新
+                    self._update_input_synced_flags(synced_ids)
+                    records_synced += len(synced_ids)
+
+                    self.logger.debug(f"{table_name}: {len(synced_ids)}件を同期しました")
+
+                except Exception as e:
+                    self.logger.error(f"{table_name}: バッチ同期エラー: {e}")
+                    records_failed += len(batch)
+                    error_message = str(e)
+
+            # 同期結果をログに記録
+            status = "success" if records_failed == 0 else "partial_success" if records_synced > 0 else "failed"
+            await self._log_sync_result(
+                sync_started_at, table_name, records_synced, records_failed, status, error_message
+            )
+
+        except Exception as e:
+            self.logger.error(f"{table_name}: 同期処理エラー: {e}")
+            await self._log_sync_result(
+                sync_started_at, table_name, 0, 0, "failed", str(e)
+            )
+
+    def _get_unsynced_input_records(self) -> List[Dict[str, Any]]:
+        """SQLiteから未同期の入力活動レコードを取得"""
+        if not self.sqlite_input_db_path:
+            return []
+
+        if not Path(self.sqlite_input_db_path).exists():
+            self.logger.debug(f"入力活動DBが存在しません: {self.sqlite_input_db_path}")
+            return []
+
+        try:
+            conn = sqlite3.connect(self.sqlite_input_db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT * FROM input_activity_sessions
+                WHERE synced_at IS NULL
+                ORDER BY start_time ASC
+            """)
+
+            records = [dict(row) for row in cursor.fetchall()]
+            conn.close()
+
+            return records
+
+        except Exception as e:
+            self.logger.error(f"入力活動レコード取得エラー: {e}")
+            return []
+
+    def _update_input_synced_flags(self, record_ids: List[int]):
+        """入力活動レコードのsynced_atフラグを更新"""
+        if not record_ids:
+            return
+
+        if not self.sqlite_input_db_path:
+            return
+
+        try:
+            conn = sqlite3.connect(self.sqlite_input_db_path)
+            cursor = conn.cursor()
+            current_time = int(datetime.now().timestamp())
+
+            placeholders = ','.join('?' * len(record_ids))
+            cursor.execute(f"""
+                UPDATE input_activity_sessions
                 SET synced_at = ?
                 WHERE id IN ({placeholders})
             """, [current_time] + record_ids)

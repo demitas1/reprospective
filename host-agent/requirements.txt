@@ -7,6 +7,9 @@ python-dotenv>=1.0.0
 # ファイルシステム監視
 watchdog>=4.0.0
 
+# 入力デバイス監視
+pynput>=1.7.6
+
 # データベース（SQLiteは標準ライブラリに含まれる）
 # PostgreSQL非同期接続（設定同期用）
 asyncpg>=0.29.0

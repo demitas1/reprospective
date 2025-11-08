@@ -19,41 +19,47 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Status
 
-**Phase 2.3 - データ同期機能 ✅ 完了** (2025-11-05)
+**✅ InputMonitor実装・手動テスト完了** (2025-11-08)
 
-**📋 アクティビティサマリー生成機能 設計完了** (2025-11-06)
+**Phase 2.3 - データ同期機能 ✅ 完了** (2025-11-05)
 
 ### 🔄 次回の再開ポイント
 
 **状況:**
-- Phase 2.3（データベース同期機能）の実装・修正が完了
-- 手動テスト完了、ファイルイベント同期の問題を発見・修正済み
-- デスクトップセッション、ファイルイベント共に正常同期を確認
-- ✅ **アクティビティサマリー生成機能の設計完了** (2025-11-06)
-  - 1436行の設計書を要求仕様書、設計書、実装計画の3文書に分離
-  - 固有名詞匿名化完了、OpenAI GPT-5を第一選択肢に設定（$4.26/月）
-  - 設計上の不明点6項目を決定・確定
-    1. 起動トリガー: オンデマンド実行 + 手動実行（CLI）
-    2. 保存先: PostgreSQL + ファイル出力併用
-    3. エラーハンドリング: リトライ3回、部分的成功は破棄
-    4. 進捗表示: ポーリング方式
-    5. LLMモデル: GPT-5（$4.26/月）、GPT-5-mini（$0.85/月）、GPT-5-nano（$0.17/月）
-    6. 匿名化ログ: すべて記録（実験目的）
-  - **実装開始可能な状態**
+- ✅ **InputMonitor（入力デバイス監視）実装・手動テスト完了** (2025-11-08)
+  - Phase 1-4すべて完了（実績: 約5時間）
+  - **手動テスト完了** - 全機能動作確認済み
+    - ✅ 入力イベント検知（マウス・キーボード）
+    - ✅ セッション記録（SQLite）- 2セッション記録成功
+    - ✅ タイムアウト動作（120秒無操作でセッション終了）
+    - ✅ PostgreSQL同期（1件同期成功、synced_atフラグ更新）
+    - ✅ グレースフルシャットダウン（SIGTERM）
+  - マウス・キーボード入力を監視し、ユーザー活動期間を記録
+  - pynput統合、スレッド間排他制御、シグナルハンドラ実装済み
+  - PostgreSQL同期機能統合済み
+  - デバッグスクリプト作成済み（`scripts/show_input_sessions.py`）
+- ✅ **アクティビティサマリー生成機能 設計更新完了** (2025-11-07)
+  - InputMonitorによる無活動期間除外機能を統合
+  - 推定精度向上：20-30%の時間削減
 
 **次回の作業候補:**
-1. **Phase 2.4（Web UI活動データ可視化）** - 既存データの可視化
+1. **Phase 2.4（Web UI活動データ可視化）** - 既存データの可視化（推奨）
+   - 推定工数: 20時間
+   - InputMonitor実装完了により、入力アクティビティデータも可視化可能
 2. **アクティビティサマリー生成機能の実装** - LLMベースのサマリー生成
    - 設計完了済み、実装開始可能
-   - 推定工数: 6-10日（Phase 1-4: 基盤実装 → LLM統合 → フィルタ・集約 → 統合テスト）
+   - 推定工数: 6-10日
+   - InputMonitor実装完了により、無活動期間除外機能が利用可能
 
 **参考資料:**
+- `docs/design/host_agent-input_monitor.md` - InputMonitor設計書（851行、2025-11-08更新）
+- `docs/design/host_agent-desktop_activity_monitor.md` - DesktopActivityMonitor設計書（更新済み）
+- `docs/design/host_agent-filesystem_watcher.md` - FileSystemWatcher設計書（更新済み）
+- `docs/design/summary-generator-requirements.md` - サマリー生成：要求仕様書（更新済み、730行）
+- `docs/design/summary-generator-design.md` - サマリー生成：設計書（更新済み、720行）
+- `docs/design/summary-generator-implementation.md` - サマリー生成：実装計画（更新済み、640行）
 - `docs/design/phase2_4_implementation_plan.md` - Phase 2.4実装計画
-- `docs/design/summary-generator-requirements.md` - サマリー生成：要求仕様書（580行）
-- `docs/design/summary-generator-design.md` - サマリー生成：設計書（550行）
-- `docs/design/summary-generator-implementation.md` - サマリー生成：実装計画（550行）
 - `logs/2025-11-05/` - Phase 2.3手動テスト時のデータ記録
-- `logs/2025-11-06/` - サマリー生成機能の参考データ
 
 ---
 
@@ -770,6 +776,141 @@ http://localhost:3333/?test=error-logger
 ---
 
 ## 実装履歴
+
+### 2025-11-08: InputMonitor実装・手動テスト完了
+
+**Phase 1-4実装完了（実績: 約5-6時間）**
+
+**Phase 1: 基盤実装（実績1時間）**
+- ✅ `InputActivitySession`データモデル追加（`common/models.py`）
+- ✅ `InputActivityDatabase`クラス実装（344行、`common/database.py`）
+- ✅ PostgreSQLスキーマ作成（`services/database/init/04_add_input_activity_sessions.sql`）
+- ✅ 設定ファイル更新（`config/config.yaml`）
+- ✅ pynput依存関係追加（`requirements.txt`）
+
+**Phase 2: InputMonitorコレクター実装（実績2時間）**
+- ✅ `collectors/input_monitor.py`作成（324行）
+- ✅ pynput統合（マウス・キーボード監視）
+- ✅ スレッド間排他制御（`threading.Lock`）
+- ✅ タイムアウトチェックスレッド（120秒無操作検知）
+- ✅ シグナルハンドラ（SIGTERM, SIGINT）
+- ✅ 未終了セッション削除機能
+- ✅ DISPLAY環境変数チェック
+
+**Phase 3: データ同期統合（実績1時間）**
+- ✅ `DataSyncManager`への入力アクティビティ同期機能追加
+- ✅ `_sync_input_activity()`メソッド実装
+- ✅ SQLite→PostgreSQLバッチ同期（5分間隔）
+- ✅ `input_monitor.py`でDataSyncManager統合
+
+**Phase 4: デバッグ・テスト（実績1時間）**
+- ✅ デバッグスクリプト作成（`scripts/show_input_sessions.py`）
+- ✅ PostgreSQLスキーマ適用
+- ✅ pynputインストール
+- ✅ モジュールインポートテスト成功
+
+**手動テスト完了（実績1.5時間）**
+
+**ConfigManager拡張（実績30分）:**
+- ✅ `get_sqlite_input_path()`メソッド追加
+- ✅ `get_input_monitor_config()`メソッド追加
+- ✅ `DataSyncManager`のhost_identifier初期化修正
+
+**機能テスト結果:**
+1. **入力イベント検知テスト** ✅
+   - マウス・キーボード入力を正常に検知
+   - セッション開始・終了のログ出力確認
+
+2. **セッション記録テスト** ✅
+   - SQLiteデータベースに2セッション記録成功
+   - セッション1: 52秒（09:54:31 - 09:55:23）
+   - セッション2: 2分10秒（09:57:08 - 09:59:18）
+
+3. **タイムアウト動作テスト** ✅
+   - 120秒無操作後、自動的にセッション終了
+   - タイムアウトチェックスレッド正常動作
+
+4. **PostgreSQL同期テスト** ✅
+   - 手動同期トリガーで1件同期成功
+   - sync_logsテーブルに記録（records_synced=1, status=success）
+   - SQLiteのsynced_atフラグ更新確認
+
+5. **グレースフルシャットダウンテスト** ✅
+   - SIGTERM受信で正常終了
+   - リスナー停止、スレッド終了、DB接続クローズ確認
+
+**技術的成果:**
+- プライバシー保護設計（入力内容は記録せず、セッション期間のみ）
+- スレッドセーフな実装（threading.Lock）
+- 堅牢なエラーハンドリング（未終了セッション削除、シグナルハンドラ）
+- オフライン耐性（SQLiteローカルキャッシュ + PostgreSQL同期）
+
+**修正ファイル: 11ファイル（新規3、更新8）**
+
+**新規作成:**
+- `host-agent/collectors/input_monitor.py` (324行)
+- `services/database/init/04_add_input_activity_sessions.sql` (45行)
+- `host-agent/scripts/show_input_sessions.py` (175行)
+
+**更新:**
+- `host-agent/common/models.py` - InputActivitySession追加
+- `host-agent/common/database.py` - InputActivityDatabase追加（344行）
+- `host-agent/common/config.py` - get_sqlite_input_path(), get_input_monitor_config()追加
+- `host-agent/config/config.yaml` - input_monitor設定追加
+- `host-agent/requirements.txt` - pynput>=1.7.6追加
+- `host-agent/common/data_sync.py` - 入力アクティビティ同期機能追加、host_identifier初期化修正
+- `CLAUDE.md` - InputMonitor実装完了ステータス更新
+
+---
+
+### 2025-11-07: InputMonitor設計 & サマリー生成機能設計更新
+
+**InputMonitor（入力デバイス監視）設計完了（実績3-4時間）:**
+- 要求仕様の確認と設計方針の決定
+  - データ粒度：セッション開始/終了時刻のみ（入力種別なし）
+  - プライバシー保護：入力内容は記録しない
+  - 技術選択：pynput → python-xlib → python-evdev の優先順位
+- `docs/design/host_agent-input_monitor.md` 新規作成（360行）
+  - セッション管理ロジック（無操作タイムアウト120秒、設定可能）
+  - データベーススキーマ（SQLite/PostgreSQL）
+  - アーキテクチャ設計（データモデル、DBクラス、コレクタークラス）
+  - 実装計画（Phase 1-4、推定工数7-11時間）
+  - セキュリティ考慮事項
+
+**既存設計書の更新:**
+- `docs/design/host_agent-desktop_activity_monitor.md` 更新
+  - Phase 2.3データ同期機能完了の記載
+  - データベーススキーマ追加、環境変数設定説明追加
+- `docs/design/host_agent-filesystem_watcher.md` 更新
+  - Phase 2.1/2.3完了の記載
+  - 設定同期機能、データ同期機能の詳細セクション追加
+
+**アクティビティサマリー生成機能 設計更新（実績2-3時間）:**
+- 無活動期間除外機能を統合（InputMonitor連携）
+- `docs/design/summary-generator-requirements.md` 更新（730行）
+  - データソースに入力アクティビティを追加
+  - ログ前処理に無活動期間除外の詳細を追加
+  - 新規セクション「無活動期間除外の詳細」追加
+  - 処理アルゴリズム、統計情報、期待される効果（20-30%時間削減）
+- `docs/design/summary-generator-design.md` 更新（720行）
+  - Log Processorに無活動期間除外アルゴリズム追加
+  - 出力データ構造に`active_time_ratio`等追加
+  - メタデータに`idle_filtering_stats`追加
+  - 設定ファイルに`idle_filtering`設定追加
+- `docs/design/summary-generator-implementation.md` 更新（640行）
+  - Phase 1実装タスクに無活動期間除外を追加
+  - ユニットテストにテストケース例を追加
+  - トラブルシューティングに入力ログ関連を追加
+
+**技術的成果:**
+- InputMonitorにより「実際に作業していた時間」を精緻に計測可能
+- デスクトップセッションと入力セッションの時間的重複計算アルゴリズム設計
+- ファイルイベントは無活動期間除外の対象外（明確な作業の証跡）
+- 推定精度向上：20-30%の時間削減（例：3時間のブラウジング → 実活動45分）
+
+**修正ファイル: 6ファイル（新規1、更新5）**
+
+---
 
 ### 2025-11-05: Phase 2.3 データ同期機能の修正・完了
 

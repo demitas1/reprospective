@@ -61,6 +61,11 @@ class ConfigManager:
         path = os.getenv('SQLITE_FILE_EVENTS_PATH', 'data/file_changes.db')
         return self._resolve_path(path)
 
+    def get_sqlite_input_path(self) -> str:
+        """入力アクティビティSQLiteパスを取得"""
+        path = os.getenv('SQLITE_INPUT_PATH', 'data/input_activity.db')
+        return self._resolve_path(path)
+
     def get_data_sync_config(self) -> Dict[str, Any]:
         """データ同期設定を取得（YAML > デフォルト）"""
         if 'data_sync' in self.yaml_config:
@@ -102,6 +107,21 @@ class ConfigManager:
         return {
             'monitored_directories': [],
             'excluded_patterns': ['*.tmp', '*.swp', '.git/*']
+        }
+
+    def get_input_monitor_config(self) -> Dict[str, Any]:
+        """入力モニター設定を取得（YAML > デフォルト）"""
+        if 'input_monitor' in self.yaml_config:
+            config = self.yaml_config['input_monitor']
+            return {
+                'enabled': config.get('enabled', True),
+                'idle_timeout_seconds': config.get('idle_timeout_seconds', 120),
+                'timeout_check_interval': config.get('timeout_check_interval', 10)
+            }
+        return {
+            'enabled': True,
+            'idle_timeout_seconds': 120,
+            'timeout_check_interval': 10
         }
 
     def _resolve_path(self, path: str) -> str:

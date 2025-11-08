@@ -3,11 +3,13 @@
 
 # データベース設定
 database:
-  # SQLiteデータベースパス（環境変数 SQLITE_DESKTOP_PATH, SQLITE_FILE_EVENTS_PATH で上書き可能）
+  # SQLiteデータベースパス（環境変数 SQLITE_DESKTOP_PATH, SQLITE_FILE_EVENTS_PATH, SQLITE_INPUT_PATH で上書き可能）
   desktop_activity:
     path: data/desktop_activity.db
   file_changes:
     path: data/file_changes.db
+  input_activity:
+    path: data/input_activity.db
 
   # PostgreSQL接続設定（非推奨: 環境変数に移行しました）
   # 以下の設定は環境変数 DATABASE_URL または DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD で指定してください
@@ -26,6 +28,12 @@ data_sync:
 desktop_monitor:
   enabled: true
   monitor_interval: 10  # 監視間隔（秒）
+
+# 入力デバイス監視設定
+input_monitor:
+  enabled: true                    # 監視有効化（デフォルト: true）
+  idle_timeout_seconds: 120        # 無操作タイムアウト（秒）
+  timeout_check_interval: 10       # タイムアウトチェック間隔（秒）
 
 # ファイルシステム監視設定
 filesystem_watcher:

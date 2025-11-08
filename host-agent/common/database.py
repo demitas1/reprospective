@@ -10,7 +10,7 @@ import logging
 import time
 from pathlib import Path
 from typing import Optional, List
-from .models import ActivitySession
+from .models import ActivitySession, InputActivitySession
 
 
 class DesktopActivityDatabase:
@@ -575,6 +575,348 @@ class FileChangeDatabase:
 
         except Exception as e:
             self.logger.error(f"ファイルイベント取得エラー: {e}")
+            return []
+
+    def close(self):
+        """データベース接続をクローズ"""
+        if self.connection:
+            self.connection.close()
+            self.logger.info("データベース接続をクローズしました")
+
+
+class InputActivityDatabase:
+    """
+    入力活動セッション専用データベースクラス
+
+    input_activity_sessionsテーブルのみを管理する。
+    """
+
+    def __init__(self, db_path: str):
+        """
+        データベースを初期化
+
+        Args:
+            db_path: データベースファイルのパス
+        """
+        self.db_path = db_path
+        self.logger = logging.getLogger(__name__)
+        self.connection: Optional[sqlite3.Connection] = None
+
+        # データベースファイルのディレクトリを作成
+        db_dir = Path(db_path).parent
+        db_dir.mkdir(parents=True, exist_ok=True)
+
+        self._connect()
+        self._create_tables()
+
+    def _connect(self):
+        """データベースに接続"""
+        try:
+            # check_same_thread=False: pynputのスレッドから呼び出されるため
+            self.connection = sqlite3.connect(self.db_path, check_same_thread=False)
+            self.connection.row_factory = sqlite3.Row  # 辞書形式で結果を取得
+            self.logger.info(f"データベースに接続しました: {self.db_path}")
+        except Exception as e:
+            self.logger.error(f"データベース接続エラー: {e}")
+            raise
+
+    def _create_tables(self):
+        """テーブルを作成"""
+        try:
+            cursor = self.connection.cursor()
+
+            # 入力活動セッションテーブル
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS input_activity_sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    start_time INTEGER NOT NULL,
+                    end_time INTEGER,
+                    start_time_iso TEXT NOT NULL,
+                    end_time_iso TEXT,
+                    duration_seconds INTEGER,
+                    synced_at INTEGER,
+                    created_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL
+                )
+            """)
+
+            # インデックスを作成（検索高速化）
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_input_start_time
+                ON input_activity_sessions(start_time)
+            """)
+
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_input_synced_at
+                ON input_activity_sessions(synced_at)
+            """)
+
+            self.connection.commit()
+            self.logger.info("データベーステーブルを作成しました")
+
+            # マイグレーション実行
+            self._migrate_add_synced_at_column()
+
+        except Exception as e:
+            self.logger.error(f"テーブル作成エラー: {e}")
+            raise
+
+    def _migrate_add_synced_at_column(self):
+        """
+        既存テーブルにsynced_atカラムを追加するマイグレーション
+
+        既にカラムが存在する場合はスキップする
+        """
+        try:
+            cursor = self.connection.cursor()
+
+            # カラムの存在を確認
+            cursor.execute("PRAGMA table_info(input_activity_sessions)")
+            columns = [row[1] for row in cursor.fetchall()]
+
+            if 'synced_at' not in columns:
+                self.logger.info("synced_atカラムを追加しています...")
+                cursor.execute("""
+                    ALTER TABLE input_activity_sessions
+                    ADD COLUMN synced_at INTEGER
+                """)
+
+                # インデックスを作成
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_input_synced_at
+                    ON input_activity_sessions(synced_at)
+                """)
+
+                self.connection.commit()
+                self.logger.info("synced_atカラムを追加しました")
+            else:
+                self.logger.debug("synced_atカラムは既に存在します")
+
+        except Exception as e:
+            self.logger.error(f"マイグレーションエラー: {e}")
+            # マイグレーションエラーは致命的ではないため、継続
+
+    def create_session(self, session: InputActivitySession) -> int:
+        """
+        新しいセッションをデータベースに保存
+
+        Args:
+            session: 保存するInputActivitySessionオブジェクト
+
+        Returns:
+            int: 保存されたセッションのID
+        """
+        try:
+            cursor = self.connection.cursor()
+            current_time = int(time.time())
+
+            cursor.execute("""
+                INSERT INTO input_activity_sessions
+                (start_time, end_time, start_time_iso, end_time_iso,
+                 duration_seconds, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                session.start_time,
+                session.end_time,
+                session.start_time_iso,
+                session.end_time_iso,
+                session.duration_seconds,
+                current_time,
+                current_time
+            ))
+
+            self.connection.commit()
+            session_id = cursor.lastrowid
+
+            self.logger.debug(
+                f"セッションを保存しました: ID={session_id}, "
+                f"start={session.start_time_iso}"
+            )
+
+            return session_id
+
+        except Exception as e:
+            self.logger.error(f"セッション保存エラー: {e}")
+            raise
+
+    def update_session_end_time(self, session_id: int, end_time: int):
+        """
+        セッションの終了時刻を更新
+
+        Args:
+            session_id: 更新対象のセッションID
+            end_time: 終了時刻（UNIXエポック秒）
+        """
+        try:
+            cursor = self.connection.cursor()
+            current_time = int(time.time())
+
+            # セッションを取得して継続時間を計算
+            cursor.execute("""
+                SELECT start_time FROM input_activity_sessions
+                WHERE id = ?
+            """, (session_id,))
+
+            row = cursor.fetchone()
+            if not row:
+                self.logger.warning(f"セッションID {session_id} が見つかりません")
+                return
+
+            start_time = row['start_time']
+            duration_seconds = end_time - start_time
+
+            # ISO形式の終了時刻
+            from datetime import datetime
+            end_time_iso = datetime.fromtimestamp(end_time).isoformat()
+
+            cursor.execute("""
+                UPDATE input_activity_sessions
+                SET end_time = ?,
+                    end_time_iso = ?,
+                    duration_seconds = ?,
+                    updated_at = ?
+                WHERE id = ?
+            """, (end_time, end_time_iso, duration_seconds, current_time, session_id))
+
+            self.connection.commit()
+
+            self.logger.debug(
+                f"セッション終了時刻を更新しました: ID={session_id}, "
+                f"duration={duration_seconds}秒"
+            )
+
+        except Exception as e:
+            self.logger.error(f"セッション更新エラー: {e}")
+            raise
+
+    def delete_incomplete_sessions(self) -> int:
+        """
+        未終了セッション（end_time=NULL）を削除
+
+        プロセス強制終了時に残った不完全なセッションをクリーンアップする。
+        起動時に呼び出される。
+
+        Returns:
+            int: 削除されたセッション数
+        """
+        try:
+            cursor = self.connection.cursor()
+
+            # 削除対象のセッションを取得
+            cursor.execute("""
+                SELECT id, start_time FROM input_activity_sessions
+                WHERE end_time IS NULL
+            """)
+            incomplete_sessions = cursor.fetchall()
+
+            if incomplete_sessions:
+                session_ids = [s['id'] for s in incomplete_sessions]
+                self.logger.warning(
+                    f"未終了セッション {len(session_ids)} 件を削除します: {session_ids}"
+                )
+
+                # 削除実行
+                cursor.execute("""
+                    DELETE FROM input_activity_sessions
+                    WHERE end_time IS NULL
+                """)
+
+                self.connection.commit()
+                return len(session_ids)
+
+            return 0
+
+        except Exception as e:
+            self.logger.error(f"未終了セッション削除エラー: {e}")
+            return 0
+
+    def get_session_by_id(self, session_id: int) -> Optional[InputActivitySession]:
+        """
+        IDでセッションを取得
+
+        Args:
+            session_id: セッションID
+
+        Returns:
+            Optional[InputActivitySession]: 見つかった場合はInputActivitySession、なければNone
+        """
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute("""
+                SELECT * FROM input_activity_sessions
+                WHERE id = ?
+            """, (session_id,))
+
+            row = cursor.fetchone()
+            if row:
+                return InputActivitySession.from_dict(dict(row))
+            return None
+
+        except Exception as e:
+            self.logger.error(f"セッション取得エラー: {e}")
+            return None
+
+    def get_recent_sessions(self, limit: int = 100) -> List[InputActivitySession]:
+        """
+        最近のセッションを取得
+
+        Args:
+            limit: 取得する最大件数
+
+        Returns:
+            List[InputActivitySession]: セッションのリスト
+        """
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute("""
+                SELECT * FROM input_activity_sessions
+                ORDER BY start_time DESC
+                LIMIT ?
+            """, (limit,))
+
+            sessions = []
+            for row in cursor.fetchall():
+                sessions.append(InputActivitySession.from_dict(dict(row)))
+
+            return sessions
+
+        except Exception as e:
+            self.logger.error(f"セッション取得エラー: {e}")
+            return []
+
+    def get_sessions_by_date(self, date_str: str) -> List[InputActivitySession]:
+        """
+        指定日付のセッションを取得
+
+        Args:
+            date_str: 日付文字列（YYYY-MM-DD形式）
+
+        Returns:
+            List[InputActivitySession]: その日のセッションのリスト
+        """
+        try:
+            from datetime import datetime
+
+            # 日付の開始と終了のUNIXタイムスタンプを計算
+            date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+            start_of_day = int(date_obj.timestamp())
+            end_of_day = start_of_day + 86400  # 24時間後
+
+            cursor = self.connection.cursor()
+            cursor.execute("""
+                SELECT * FROM input_activity_sessions
+                WHERE start_time >= ? AND start_time < ?
+                ORDER BY start_time ASC
+            """, (start_of_day, end_of_day))
+
+            sessions = []
+            for row in cursor.fetchall():
+                sessions.append(InputActivitySession.from_dict(dict(row)))
+
+            return sessions
+
+        except Exception as e:
+            self.logger.error(f"セッション取得エラー: {e}")
             return []
 
     def close(self):
