@@ -33,25 +33,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - システムが自動的に実体パスに解決
   - 表示用パスと監視用パスを分離
   - DirectoryCardで両方のパス表示
-- ✅ **InputMonitor（入力デバイス監視）本番運用準備完了** (2025-11-08)
+- ✅ **InputMonitor（入力デバイス監視）本番運用完了** (2025-11-08)
   - Phase 1-4すべて完了（実績: 約5-6時間）
+  - **同期バグ修正完了** (2025-11-08)
+    - ✅ asyncioイベントループのブロック問題を解決
+    - ✅ PostgreSQL自動同期が正常動作（5分間隔）
+    - ✅ 起動時の未同期データ自動検出・同期機能動作確認
   - **運用統合完了** - start-agent.sh/stop-agent.sh統合済み
     - ✅ `./scripts/start-agent.sh` で3コレクター自動起動
     - ✅ `./scripts/start-agent.sh --input` で個別起動可能
     - ✅ `./scripts/stop-agent.sh --input` でグレースフルシャットダウン
-    - ✅ `scripts/show-input-sessions.sh` - PostgreSQL表示スクリプト
-  - **手動テスト完了** - 全機能動作確認済み
+  - **全機能動作確認済み**
     - ✅ 入力イベント検知（マウス・キーボード）
-    - ✅ セッション記録（SQLite）- 2セッション記録成功
+    - ✅ セッション記録（SQLite）- 複数セッション記録成功
     - ✅ タイムアウト動作（120秒無操作でセッション終了）
-    - ✅ PostgreSQL同期（1件同期成功、synced_atフラグ更新）
-    - ✅ グレースフルシャットダウン（SIGTERM）
-  - **ファイル監視動作確認完了**
-    - ✅ PostgreSQL設定同期（60秒間隔）
-    - ✅ ファイルイベント記録成功（created, modified, deleted）
+    - ✅ PostgreSQL自動同期（定期同期ループ正常動作）
+    - ✅ グレースフルシャットダウン（SIGTERM、タスククリーンアップ）
   - マウス・キーボード入力を監視し、ユーザー活動期間を記録
   - pynput統合、スレッド間排他制御、シグナルハンドラ実装済み
-  - PostgreSQL同期機能統合済み
+  - asyncio + threading 適切な並行処理実装
 - ✅ **アクティビティサマリー生成機能 設計更新完了** (2025-11-07)
   - InputMonitorによる無活動期間除外機能を統合
   - 推定精度向上：20-30%の時間削減
@@ -796,6 +796,44 @@ http://localhost:3333/?test=error-logger
 ---
 
 ## 実装履歴
+
+### 2025-11-08: InputMonitor同期バグ修正完了
+
+**InputMonitor PostgreSQL同期機能の修正（実績: 30分）**
+
+**背景:**
+- InputMonitorが正常に動作していたが、PostgreSQLへの同期が実行されていなかった
+- SQLiteには7件のセッションが記録されていたが、PostgreSQLには1件のみ
+- ログに同期関連のメッセージが初期化以降出力されていなかった
+
+**原因:**
+- `input_monitor.py`の321行目で`monitor.start_monitoring()`がブロッキング呼び出しだった
+- asyncioイベントループが完全にブロックされ、`asyncio.create_task(sync_manager.start_sync_loop())`で作成した同期タスクが実行されなかった
+
+**修正内容:**
+
+**input_monitor.py (304-342行目):**
+- ✅ InputMonitorを`threading.Thread`で別スレッド起動に変更
+- ✅ asyncioイベントループを`await stop_event.wait()`で維持
+- ✅ シグナルハンドラで`stop_event.set()`してグレースフルシャットダウン
+- ✅ クリーンアップ処理を`finally`ブロックに移動（sync_task.cancel(), sync_manager.close()）
+
+**動作確認結果:**
+- ✅ 起動直後に未同期6件を自動検出・同期
+- ✅ PostgreSQLに7件すべて記録
+- ✅ 新規セッション（ID=8）も記録開始
+- ✅ 定期同期ループが正常動作（300秒間隔）
+- ✅ ログに同期メッセージが正常出力（`定期同期ループを開始します`, `input_activity_sessions: 6件の未同期レコードを検出`）
+
+**技術的成果:**
+- asyncioとthreadingの適切な分離（CPU boundな監視はスレッド、I/O boundな同期はasyncio）
+- イベントループのブロック回避（バックグラウンドタスクが正常に実行可能）
+- グレースフルシャットダウンの改善（タスクキャンセル、接続プールクローズ）
+
+**修正ファイル: 1ファイル**
+- `host-agent/collectors/input_monitor.py` (304-342行目)
+
+---
 
 ### 2025-11-08: シンボリックリンク対応機能実装完了
 

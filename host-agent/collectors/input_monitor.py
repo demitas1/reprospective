@@ -302,26 +302,44 @@ async def main_async():
     await sync_manager.initialize()
 
     # バックグラウンド同期ループ開始
-    asyncio.create_task(sync_manager.start_sync_loop())
+    sync_task = asyncio.create_task(sync_manager.start_sync_loop())
 
     # InputMonitor開始（別スレッドで実行）
     monitor = InputMonitor(input_config, database)
 
     # シグナルハンドラ登録
+    stop_event = asyncio.Event()
+
     def signal_handler(sig, frame):
         logger.info(f"シグナル {sig} を受信しました")
         monitor.stop_monitoring()
-        database.close()
-        sys.exit(0)
+        stop_event.set()
 
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
 
-    # 監視開始（ブロッキング）
-    monitor.start_monitoring()
+    # InputMonitorを別スレッドで起動
+    import threading
+    monitor_thread = threading.Thread(target=monitor.start_monitoring, daemon=True)
+    monitor_thread.start()
+    logger.info("InputMonitorをバックグラウンドスレッドで起動しました")
 
-    # 正常終了時のクリーンアップ
-    database.close()
+    # asyncioイベントループを維持（同期タスクが動作するように）
+    try:
+        await stop_event.wait()
+    except asyncio.CancelledError:
+        logger.info("asyncioタスクがキャンセルされました")
+    finally:
+        # クリーンアップ
+        logger.info("クリーンアップを開始します")
+        sync_task.cancel()
+        try:
+            await sync_task
+        except asyncio.CancelledError:
+            pass
+        await sync_manager.close()
+        database.close()
+        logger.info("クリーンアップ完了")
 
 
 def main():
