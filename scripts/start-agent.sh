@@ -102,7 +102,10 @@ START_FILES=false
 START_INPUT=false
 
 if [ $# -eq 0 ]; then
-    START_ALL=true
+    # ファイル監視を除くすべてのエージェントを起動
+    START_ALL=false
+    START_DESKTOP=true
+    START_INPUT=true
 else
     START_ALL=false
     while [ $# -gt 0 ]; do

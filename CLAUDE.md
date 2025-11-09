@@ -40,8 +40,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
     - ✅ PostgreSQL自動同期が正常動作（5分間隔）
     - ✅ 起動時の未同期データ自動検出・同期機能動作確認
   - **運用統合完了** - start-agent.sh/stop-agent.sh統合済み
-    - ✅ `./scripts/start-agent.sh` で3コレクター自動起動
+    - ✅ `./scripts/start-agent.sh` でデスクトップ・入力モニター自動起動
     - ✅ `./scripts/start-agent.sh --input` で個別起動可能
+    - ✅ `./scripts/start-agent.sh --files` でファイル監視起動可能（通常は停止）
     - ✅ `./scripts/stop-agent.sh --input` でグレースフルシャットダウン
   - **全機能動作確認済み**
     - ✅ 入力イベント検知（マウス・キーボード）
@@ -57,19 +58,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - 推定精度向上：20-30%の時間削減
 
 **現在の本番運用状態:**
-- ✅ 3コレクター稼働中: desktop-monitor, filesystem-watcher, input-monitor
+- ✅ 2コレクター稼働中: desktop-monitor, input-monitor
+- ⚠️ **ファイル監視一時停止** (2025-11-09)
+  - filesystem-watcherが長時間稼働後にハング状態になる問題を確認
+  - 当面の間、デフォルトでは起動しない設定に変更
+  - 個別起動は可能: `./scripts/start-agent.sh --files`
 - ✅ PostgreSQL自動同期（5分間隔）
 - ✅ ローカルSQLiteキャッシュ + 中央PostgreSQL構成
 - ✅ データ表示スクリプト整備完了
 
 **次回の作業候補:**
-1. **Phase 2.4（Web UI活動データ可視化）** - 既存データの可視化（推奨）
+1. **Web UI全面見直し** - 近日中に実施予定
+   - 監視ディレクトリ管理UIの改善
+   - 活動データ可視化機能の検討
+2. **Phase 2.4（Web UI活動データ可視化）** - 既存データの可視化
    - 推定工数: 20時間
    - InputMonitor実装完了により、入力アクティビティデータも可視化可能
-2. **アクティビティサマリー生成機能の実装** - LLMベースのサマリー生成
+3. **アクティビティサマリー生成機能の実装** - LLMベースのサマリー生成
    - 設計完了済み、実装開始可能
    - 推定工数: 6-10日
    - InputMonitor実装完了により、無活動期間除外機能が利用可能
+4. **FileSystemWatcherの安定性改善** - ハング問題の調査と修正
 
 **参考資料:**
 - `docs/design/host_agent-input_monitor.md` - InputMonitor設計書（851行、2025-11-08更新）
@@ -796,6 +805,108 @@ http://localhost:3333/?test=error-logger
 ---
 
 ## 実装履歴
+
+### 2025-11-09: FileSystemWatcher問題調査とデフォルト起動設定変更
+
+**問題調査（実績: 30分）**
+
+**背景:**
+- ユーザーから「file eventsが記録されていない」との報告
+
+**調査結果:**
+- ✅ ファイルイベントは過去に記録されていた（SQLite: 706件、PostgreSQL: 682件）
+- ❌ 2025-11-09（今日）のイベントが0件
+- ❌ filesystem_watcher_v2.pyプロセスは動作していたが、**ハング状態**でイベントを検知していなかった
+
+**原因:**
+- 長時間稼働後にファイルウォッチャーがフリーズする問題を確認
+- プロセスは動作しているがwatchdogがファイルイベントを検知・記録できていない状態
+
+**対応:**
+1. ファイルウォッチャーを再起動 → 正常動作を確認（2件のイベント記録成功）
+2. `scripts/start-agent.sh`のデフォルト起動設定を変更
+   - **変更前**: 引数なしで3コレクター（desktop, files, input）すべて起動
+   - **変更後**: 引数なしではファイル監視を除く2コレクター（desktop, input）のみ起動
+   - ファイル監視は個別起動可能: `./scripts/start-agent.sh --files`
+
+**技術的成果:**
+- FileSystemWatcherの安定性問題を特定
+- 当面の間、ファイル監視を一時停止することで運用の安定性を確保
+- 将来的な改善課題として記録
+
+**今後の対応:**
+- ヘルスチェック機能の追加検討
+- watchdogライブラリのバージョン確認・アップグレード検討
+- 定期的な自動再起動機能の検討
+
+**修正ファイル: 1ファイル**
+- `scripts/start-agent.sh` (104-107行目) - デフォルト起動設定変更
+
+---
+
+### 2025-11-08: Web UI React警告修正（制御/非制御コンポーネント混在）
+
+**EditDirectoryDialog 制御/非制御コンポーネント混在警告の修正（実績: 15分）**
+
+**背景:**
+- Web UI操作中にブラウザコンソールにReact警告が表示された
+- 警告内容: `A component is changing an uncontrolled input to be controlled`
+- エラーログ（`logs/errors.log`）には記録されていなかった
+
+**原因:**
+- `EditDirectoryDialog.tsx`の`useForm`初期化時に`defaultValues`が設定されていなかった
+- `watch('enabled')`が初回レンダリング時に`undefined`を返していた
+- `useEffect`で`reset()`されるまで`<Switch checked={undefined} />`（非制御）
+- その後`reset()`で`<Switch checked={true/false} />`（制御）に変化
+- Reactは「非制御→制御」の変化を警告として検出
+
+**修正内容:**
+
+**EditDirectoryDialog.tsx (48-56行目):**
+```tsx
+// 修正前
+useForm<DirectoryUpdateFormData>({
+  resolver: zodResolver(directoryUpdateSchema),
+});
+
+// 修正後
+useForm<DirectoryUpdateFormData>({
+  resolver: zodResolver(directoryUpdateSchema),
+  defaultValues: {
+    directory_path: '',
+    enabled: false,
+    display_name: '',
+    description: '',
+  },
+});
+```
+
+**エラーログに記録されなかった理由:**
+- このエラーは**React開発者向け警告**（`console.error`への出力のみ）
+- JavaScriptの例外（Error）ではないため、以下で捕捉できない：
+  - ❌ `window.addEventListener('error')` - グローバルエラー
+  - ❌ ErrorBoundary - React例外
+  - ❌ `window.addEventListener('unhandledrejection')` - Promise拒否
+- 現在の`errorLogger.ts`は例外のみ捕捉、警告は対象外
+- 本番ビルド時には警告コード自体が削除される（`__DEV__`フラグ）
+
+**ESLintでの検出可否:**
+- ❌ 静的解析（ESLint）では検出不可能
+- 理由: 実行時の状態変化（`undefined` → `boolean`）は静的には分からない
+- `eslint-plugin-react`を追加しても、このケースは検出できない
+
+**技術的成果:**
+- React Hook Formのベストプラクティス適用（常に`defaultValues`を指定）
+- 非制御/制御コンポーネントの混在を防止
+- 開発環境での警告を解消
+
+**修正ファイル: 1ファイル**
+- `services/web-ui/src/components/directories/EditDirectoryDialog.tsx` (48-56行目)
+
+**参考:**
+- `AddDirectoryDialog.tsx`は既に`defaultValues`設定済みで問題なし
+
+---
 
 ### 2025-11-08: InputMonitor同期バグ修正完了
 
