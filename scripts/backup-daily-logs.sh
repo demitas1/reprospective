@@ -33,7 +33,7 @@ echo "出力先: $LOG_DIR"
 echo ""
 
 # 1. デスクトップアクティビティセッションを出力
-echo "[1/3] デスクトップアクティビティセッションをバックアップ中..."
+echo "[1/4] デスクトップアクティビティセッションをバックアップ中..."
 DESKTOP_OUTPUT="$LOG_DIR/desktop_activity_sessions.txt"
 
 PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" --no-psqlrc --pset pager=off -c "
@@ -60,8 +60,34 @@ echo "  ✓ ${DESKTOP_COUNT}件のセッションを記録しました"
 echo "  → $DESKTOP_OUTPUT"
 echo ""
 
-# 2. ファイル変更イベントを出力
-echo "[2/3] ファイル変更イベントをバックアップ中..."
+# 2. 入力アクティビティセッションを出力
+echo "[2/4] 入力アクティビティセッションをバックアップ中..."
+INPUT_OUTPUT="$LOG_DIR/input_activity_sessions.txt"
+
+PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" --no-psqlrc --pset pager=off -c "
+SELECT
+    id,
+    to_char(start_time_iso, 'YYYY-MM-DD HH24:MI:SS') as start_time,
+    to_char(end_time_iso, 'YYYY-MM-DD HH24:MI:SS') as end_time,
+    duration_seconds
+FROM
+    input_activity_sessions
+WHERE
+    DATE(start_time_iso) = '$TARGET_DATE'
+ORDER BY
+    start_time ASC;
+" > "$INPUT_OUTPUT"
+
+INPUT_COUNT=$(PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" --no-psqlrc --pset pager=off -t -c "
+SELECT COUNT(*) FROM input_activity_sessions WHERE DATE(start_time_iso) = '$TARGET_DATE';
+" | xargs)
+
+echo "  ✓ ${INPUT_COUNT}件のセッションを記録しました"
+echo "  → $INPUT_OUTPUT"
+echo ""
+
+# 3. ファイル変更イベントを出力
+echo "[3/4] ファイル変更イベントをバックアップ中..."
 FILE_OUTPUT="$LOG_DIR/file_change_events.txt"
 
 PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" --no-psqlrc --pset pager=off -c "
@@ -91,8 +117,8 @@ echo "  ✓ ${FILE_COUNT}件のファイルイベントを記録しました"
 echo "  → $FILE_OUTPUT"
 echo ""
 
-# 3. 同期ログを出力
-echo "[3/3] 同期ログをバックアップ中..."
+# 4. 同期ログを出力
+echo "[4/4] 同期ログをバックアップ中..."
 SYNC_OUTPUT="$LOG_DIR/sync_logs.txt"
 
 PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" --no-psqlrc --pset pager=off -c "
@@ -130,6 +156,7 @@ echo "出力先: $LOG_DIR"
 echo ""
 echo "統計:"
 echo "  - デスクトップセッション: ${DESKTOP_COUNT}件"
+echo "  - 入力アクティビティセッション: ${INPUT_COUNT}件"
 echo "  - ファイルイベント: ${FILE_COUNT}件"
 echo "  - 同期ログ: ${SYNC_COUNT}件"
 echo ""
